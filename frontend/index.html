@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Batch Review - Integrity Observatory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="d3.min.js"></script>
+<style>
+  :root {
+    --bg: #14110E;
+    --surface: #1E1A15;
+    --surface-2: #28231D;
+    --line: #362E27;
+    --line-light: #483E35;
+    --text: #EDE7DE;
+    --muted: #8A8175;
+    --faint: #595247;
+    --primary: #C46A3E;
+    --primary-hover: #D87748;
+    --primary-light: rgba(196, 106, 62, 0.16);
+    --high: #D64545;
+    --high-bg: rgba(214, 69, 69, 0.16);
+    --med: #D9A441;
+    --med-bg: rgba(217, 164, 65, 0.16);
+    --ok: #5B8A72;
+    --ok-bg: rgba(91, 138, 114, 0.16);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  a { color: inherit; text-decoration: none; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 40px; background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .brand .mark { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); }
+  .brand h1 { font-weight: 700; font-size: 18px; margin: 0; letter-spacing: -0.01em; color: var(--text); }
+  .crumbs { color: var(--faint); font-size: 13.5px; font-weight: 500; }
+  .crumbs span.current { color: var(--text); font-weight: 600; }
+  .crumbs span.link { cursor: pointer; color: var(--muted); }
+  .crumbs span.link:hover { color: var(--primary); }
+  .topActions { display: flex; gap: 10px; }
+  .btn {
+    padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: 'Inter', sans-serif; border: 1px solid var(--line);
+    background: var(--surface); color: var(--muted); transition: all 0.15s ease;
+  }
+  .btn:hover { border-color: var(--line-light); color: var(--text); background: var(--surface-2); }
+  .btn-primary { background: var(--primary); color: #FFFFFF; border: none; font-weight: 600; }
+  .btn-primary:hover { background: var(--primary-hover); color: #FFFFFF; }
+
+  main { padding: 32px 40px 70px; max-width: 1360px; margin: 0 auto; }
+
+  .overview-head { margin-bottom: 24px; }
+  .overview-head h2 { font-weight: 700; font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; color: var(--text); }
+  .overview-head p { color: var(--muted); font-size: 14px; margin: 0; }
+  
+  .empty-cohorts-box {
+    background: var(--surface); border: 2px dashed var(--line); border-radius: 14px;
+    padding: 60px 20px; text-align: center; margin-top: 20px;
+  }
+  .empty-cohorts-box h3 { font-size: 18px; font-weight: 600; margin: 0 0 8px; color: var(--text); }
+  .empty-cohorts-box p { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+
+  .orbit-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; position: relative; }
+  #orbitGraph { width: 100%; display: block; }
+  .orbit-legend { display: flex; gap: 20px; padding: 12px 16px 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
+  .orbit-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .cohort-node { cursor: pointer; }
+  .cohort-node .ring { fill: none; stroke-width: 1.5px; }
+  .cohort-node .core { transition: r .15s, fill .15s; }
+  .cohort-node:hover .core { filter: brightness(1.15); }
+  .cohort-node text { font-family: 'IBM Plex Mono', monospace; fill: var(--muted); text-anchor: middle; pointer-events: none; }
+  .cohort-node .lbl-name { font-family: 'Inter', sans-serif; font-weight: 600; fill: var(--text); font-size: 13px; }
+  .cohort-node .lbl-meta { font-size: 11px; fill: var(--muted); }
+  .orbit-tooltip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--text); opacity: 0; transition: opacity .1s; white-space: nowrap; box-shadow: 0 8px 16px rgba(0,0,0,0.4); }
+
+  .batch-list { display: flex; flex-direction: column; gap: 12px; max-width: 680px; }
+  .batch-row { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; cursor: pointer; transition: all 0.15s ease; }
+  .batch-row:hover { border-color: var(--primary); transform: translateY(-1px); }
+  .batch-row .name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .batch-row .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .batch-row .flag { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: var(--high); background: var(--high-bg); padding: 4px 10px; border-radius: 6px; }
+
+  /* 4 KPI Summary Cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .stat-card .stat-label { font-size: 12.5px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+  .stat-card .stat-value { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600; color: var(--text); }
+  .stat-card .stat-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
+
+  .view-controls-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 14px; }
+  .panel-toggle { display: flex; gap: 8px; }
+  .panel-toggle button { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; border: 1px solid var(--line); background: var(--surface); color: var(--muted); transition: all 0.15s ease; }
+  .panel-toggle button.active { background: var(--primary); color: #FFFFFF; border-color: var(--primary); font-weight: 600; }
+  
+  .density-notice { font-size: 12.5px; color: var(--med); background: var(--med-bg); border: 1px solid rgba(217,164,65,0.3); padding: 6px 12px; border-radius: 8px; display: none; align-items: center; gap: 8px; }
+
+  /* Controls Bar */
+  .controls { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; flex-wrap: wrap; background: var(--surface); padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; }
+  .search { flex: 1; min-width: 200px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; color: var(--text); font-size: 13.5px; font-family: 'Inter', sans-serif; outline: none; }
+  .search:focus { border-color: var(--primary); }
+  .search::placeholder { color: var(--faint); }
+  
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+  .filter-label { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-right: 4px; }
+  .chip { padding: 6px 13px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; }
+  .chip:hover { border-color: var(--line-light); color: var(--text); }
+  .chip.active { background: var(--primary-light); color: var(--primary); border-color: var(--primary); font-weight: 600; }
+  
+  .slider-wrap { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; font-weight: 500; margin-left: auto; }
+  input[type=range] { accent-color: var(--primary); width: 130px; cursor: pointer; }
+
+  /* Small Multiples Cluster Grid (Fix 1) */
+  .clusters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; margin-bottom: 24px; }
+  .cluster-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; position: relative; transition: border-color 0.15s ease; }
+  .cluster-card:hover { border-color: var(--line-light); }
+  .cluster-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .cluster-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .cluster-card-badge { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--high-bg); color: var(--high); }
+  .cluster-card-badge.med { background: var(--med-bg); color: var(--med); }
+  .cluster-svg { width: 100%; display: block; height: 210px; }
+
+  /* Matrix View (Fix 2) */
+  .matrix-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; overflow-x: auto; margin-bottom: 24px; }
+  .matrix-svg { display: block; margin: 0 auto; }
+  .matrix-tooltip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--text); opacity: 0; transition: opacity 0.1s; z-index: 30; white-space: nowrap; }
+
+  /* Data Table */
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+  thead th { text-align: left; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 14px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); transition: background 0.1s ease; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody td { padding: 14px 16px; font-size: 14px; vertical-align: middle; }
+  .students { font-weight: 500; }
+  .students small { color: var(--faint); font-size: 12px; display: block; margin-top: 2px; }
+  .type-pill { font-size: 11.5px; padding: 3px 10px; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; background: var(--surface-2); color: var(--muted); font-weight: 500; display: inline-block; }
+  .score { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; }
+  .score.high { color: var(--high); } .score.med { color: var(--med); } .score.ok { color: var(--ok); }
+  .status-select { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; font-weight: 500; cursor: pointer; outline: none; }
+  .empty { text-align: center; padding: 50px 20px; color: var(--faint); font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+
+  /* Modal & Drawer */
+  .scrim { position: fixed; inset: 0; background: rgba(10, 8, 6, 0.7); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; backdrop-filter: blur(3px); }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-46%); width: 480px; max-width: 92vw; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 28px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 21; box-shadow: 0 20px 30px rgba(0,0,0,0.5); }
+  .modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%,-50%); }
+  .modal h3 { font-weight: 700; font-size: 19px; margin: 0 0 20px; letter-spacing: -0.01em; color: var(--text); }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+  .field input[type=text], .field select { width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px; font-family: 'Inter', sans-serif; outline: none; }
+  .field input[type=text]:focus, .field select:focus { border-color: var(--primary); }
+  .dropzone { border: 2px dashed var(--line); border-radius: 10px; padding: 24px; text-align: center; color: var(--faint); font-size: 13px; cursor: pointer; transition: all 0.15s ease; background: var(--surface-2); }
+  .dropzone:hover, .dropzone.hover { border-color: var(--primary); background: var(--primary-light); }
+  .dropzone b { color: var(--text); display: block; margin-bottom: 4px; font-size: 13.5px; font-weight: 600; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+  .run-status { font-size: 13px; color: var(--muted); margin-top: 14px; min-height: 18px; font-weight: 500; }
+
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 640px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .25s ease; z-index: 22; overflow-y: auto; padding: 32px; box-shadow: -10px 0 30px rgba(0,0,0,0.5); }
+  .drawer.open { transform: translateX(0); }
+  .drawer-close { background: none; border: none; color: var(--faint); font-size: 24px; cursor: pointer; float: right; font-weight: 400; }
+  .drawer-close:hover { color: var(--text); }
+  .drawer h2 { font-weight: 700; font-size: 20px; margin: 0 0 6px; color: var(--text); }
+  .drawer .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 24px; font-weight: 500; }
+  .matchlist { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+  .matchrow { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--text); font-family: 'IBM Plex Mono', monospace; }
+  .verdict-note { background: var(--med-bg); border: 1px solid var(--med); border-radius: 10px; padding: 14px 16px; font-size: 13.5px; color: var(--med); margin-bottom: 24px; line-height: 1.5; }
+  .drawer-actions { display: flex; gap: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand" id="brandHome">
+    <span class="mark"></span>
+    <h1>Integrity Observatory</h1>
+  </div>
+  <div class="crumbs" id="crumbs"></div>
+  <div class="topActions">
+    <button class="btn" id="refreshBtn">Refresh</button>
+    <button class="btn btn-primary" id="openUpload">Run comparison</button>
+  </div>
+</header>
+
+<main>
+  <div class="view active" id="viewCohorts">
+    <div class="overview-head">
+      <h2>Cohorts</h2>
+      <p>Every student cohort, organized by run history. Click a cohort to inspect its weekly batches.</p>
+    </div>
+    <div class="orbit-wrap" id="orbitWrap">
+      <div class="orbit-legend">
+        <span><span class="dot" style="background:var(--high)"></span>Flagged pairs present (≥80%)</span>
+        <span><span class="dot" style="background:var(--ok)"></span>Clean batch</span>
+        <span style="color:var(--faint); margin-left:auto;">Node size reflects cohort size</span>
+      </div>
+      <svg id="orbitGraph" height="520"></svg>
+      <div class="orbit-tooltip" id="orbitTooltip"></div>
+    </div>
+  </div>
+
+  <div class="view" id="viewBatches">
+    <div class="overview-head">
+      <h2 id="cohortTitle">—</h2>
+      <p>Submissions checked independently for similarity across students.</p>
+    </div>
+    <div class="batch-list" id="batchList"></div>
+  </div>
+
+  <div class="view" id="viewResults">
+    <div class="stats-grid" id="resultsStats"></div>
+
+    <div class="controls">
+      <input class="search" id="search" placeholder="Search student name…">
+      
+      <div class="filter-group">
+        <span class="filter-label">Type:</span>
+        <button class="chip active" data-type="all">All</button>
+        <button class="chip" data-type="Code">Code</button>
+        <button class="chip" data-type="Report">Report</button>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-label">Similarity:</span>
+        <button class="chip sim-chip" data-threshold="0">All</button>
+        <button class="chip sim-chip" data-threshold="60">60%+</button>
+        <button class="chip sim-chip" data-threshold="70">70%+</button>
+        <button class="chip sim-chip active" data-threshold="80">80%+</button>
+        <button class="chip sim-chip" data-threshold="90">90%+</button>
+      </div>
+
+      <div class="slider-wrap">
+        Threshold <input type="range" min="0" max="95" value="80" id="thresholdSlider"><span class="mono" id="sliderVal">80%</span>
+      </div>
+    </div>
+
+    <div class="view-controls-bar">
+      <div class="panel-toggle">
+        <button class="active" data-panel="clusters">Small Clusters</button>
+        <button data-panel="matrix">Matrix Heatmap</button>
+        <button data-panel="table">Data Table</button>
+      </div>
+      <div class="density-notice" id="densityNotice">⚡ Auto-switched to Matrix View for high pair density (&gt;25 pairs)</div>
+    </div>
+
+    <!-- Fix 1: Small Multiples Cluster Grid -->
+    <div id="panelClusters">
+      <div class="clusters-grid" id="clustersGrid"></div>
+      <div class="empty" id="clustersEmpty" style="display:none;">No cluster connections match the current threshold.</div>
+    </div>
+
+    <!-- Fix 2: Matrix View -->
+    <div id="panelMatrix" style="display:none;">
+      <div class="matrix-wrap" id="matrixWrap">
+        <svg class="matrix-svg" id="matrixSvg"></svg>
+        <div class="matrix-tooltip" id="matrixTooltip"></div>
+      </div>
+      <div class="empty" id="matrixEmpty" style="display:none;">No similarity matches to display in matrix view.</div>
+    </div>
+
+    <!-- Table View -->
+    <div id="panelTable" style="display:none;">
+      <table>
+        <thead><tr><th>Students</th><th>Type</th><th>Similarity</th><th>Status</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty" id="emptyState" style="display:none;">No student pairs match the current filter criteria.</div>
+    </div>
+  </div>
+</main>
+
+<div class="scrim" id="uploadScrim"></div>
+<div class="modal" id="uploadModal">
+  <h3>Run a comparison</h3>
+  <div class="field"><label>Cohort Name</label><input type="text" id="fCohortLabel" placeholder="KAIM Batch 7"></div>
+  <div class="field"><label>Week / Batch Label</label><input type="text" id="fBatchLabel" placeholder="Week 5"></div>
+  <div class="field"><label>Submission Mode</label>
+    <select id="fMode">
+      <option value="code">Code (Automatic Language Detection)</option>
+      <option value="report">Reports (DOCX / TXT text comparison)</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Submissions (.zip with student folders)</label>
+    <div class="dropzone" id="dropzone"><b id="dzLabel">Drop a .zip file here or click to browse</b>Upload zip containing one folder per student</div>
+    <input type="file" id="fileInput" accept=".zip" style="display:none;">
+  </div>
+  <div class="run-status" id="runStatus"></div>
+  <div class="modal-actions">
+    <button class="btn" id="cancelUpload">Cancel</button>
+    <button class="btn btn-primary" id="submitUpload">Run Analysis</button>
+  </div>
+</div>
+
+<div class="scrim" id="drawerScrim"></div>
+<div class="drawer" id="drawer">
+  <button class="drawer-close" id="drawerClose">×</button>
+  <h2 id="drawerTitle">—</h2>
+  <div class="sub" id="drawerSub">—</div>
+  <div class="verdict-note" id="drawerNote"></div>
+  <div class="matchlist" id="drawerMatches"></div>
+  <div class="drawer-actions">
+    <button class="btn btn-primary" id="btnConfirm">Confirm Plagiarism Match</button>
+    <button class="btn" id="btnClear">Mark as False Positive</button>
+  </div>
+</div>
+
+<script>
+const API = "http://localhost:8000/api";
+let state = {
+  cohortId: null, cohortLabel: null,
+  batchId: null, batchLabel: null,
+  batch: null, cohorts: {},
+  activeType: 'all', threshold: 80, panel: 'clusters',
+  userSelectedPanel: false
+};
+
+function setView(id){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function renderCrumbs(){
+  const c = document.getElementById('crumbs');
+  let html = '<span class="link" onclick="goHome()">Cohorts</span>';
+  if(state.cohortLabel) html += ' / <span class="' + (state.batchLabel ? 'link" onclick="goBatches()' : 'current') + '">' + state.cohortLabel + '</span>';
+  if(state.batchLabel) html += ' / <span class="current">' + state.batchLabel + '</span>';
+  c.innerHTML = html;
+}
+
+async function goHome(){
+  state.cohortId = null; state.batchId = null; state.cohortLabel = null; state.batchLabel = null;
+  renderCrumbs(); setView('viewCohorts');
+  await loadCohorts(); renderCohortGrid();
+}
+async function goBatches(){
+  state.batchId = null; state.batchLabel = null;
+  renderCrumbs(); setView('viewBatches');
+  await loadCohorts(); renderBatchList();
+}
+document.getElementById('brandHome').addEventListener('click', goHome);
+
+async function loadCohorts(){
+  try {
+    const res = await fetch(API + '/cohorts');
+    state.cohorts = await res.json();
+  } catch(e) {
+    state.cohorts = {};
+  }
+}
+
+function renderCohortGrid(){
+  const svg = d3.select('#orbitGraph');
+  svg.selectAll('*').remove();
+  const wrap = document.getElementById('orbitWrap');
+  const width = wrap.clientWidth || 1200;
+  const height = 520;
+  svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+  const ids = Object.keys(state.cohorts);
+  if(ids.length === 0){
+    svg.append('foreignObject')
+      .attr('width', width)
+      .attr('height', height)
+      .html(`
+        <div class="empty-cohorts-box">
+          <h3>No cohorts found</h3>
+          <p>Upload your first submissions to begin analyzing student code & reports.</p>
+          <button class="btn btn-primary" onclick="document.getElementById('openUpload').click()">Upload your first submissions</button>
+        </div>
+      `);
+    return;
+  }
+
+  const cohorts = ids.map(id => {
+    const c = state.cohorts[id];
+    const batches = Object.values(c.batches);
+    const students = Math.max(0, ...batches.map(b => b.studentCount));
+    const flagged = batches.reduce((s, b) => s + b.flaggedCount, 0);
+    return { id, label: c.label, batches: batches.length, students, flagged };
+  });
+
+  const maxStudents = Math.max(1, ...cohorts.map(c => c.students));
+  const radius = d3.scaleSqrt().domain([0, maxStudents]).range([18, 52]);
+  const cx = width / 2, cy = height / 2;
+  const orbitR = Math.min(width/2, height/2) - 100;
+
+  const defs = svg.append('defs');
+  const glow = defs.append('filter').attr('id','nodeGlow').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');
+  glow.append('feGaussianBlur').attr('stdDeviation', 4).attr('result','blur');
+  glow.append('feMerge').selectAll('feMergeNode').data(['blur','SourceGraphic']).join('feMergeNode').attr('in', d=>d);
+
+  svg.append('g').selectAll('circle').data([0.45, 0.75, 1]).join('circle')
+    .attr('cx', cx).attr('cy', cy).attr('r', d => d*orbitR)
+    .attr('fill','none').attr('stroke', 'var(--line)').attr('stroke-width', 1.5).attr('stroke-dasharray', '4 4');
+
+  cohorts.forEach((c, i) => {
+    if(i === 0){ c.x = cx; c.y = cy; }
+    else {
+      const a = (i-1) * (2*Math.PI / Math.max(1, cohorts.length-1)) - Math.PI/2;
+      c.x = cx + Math.cos(a) * orbitR;
+      c.y = cy + Math.sin(a) * orbitR;
+    }
+  });
+
+  const tooltip = document.getElementById('orbitTooltip');
+
+  const node = svg.append('g').selectAll('g').data(cohorts).join('g')
+    .attr('class','cohort-node')
+    .attr('transform', d => `translate(${d.x},${d.y})`);
+
+  node.append('circle').attr('class','core')
+    .attr('r', d => radius(d.students))
+    .attr('fill', d => d.flagged > 0 ? 'var(--high-bg)' : 'var(--ok-bg)')
+    .attr('stroke', d => d.flagged > 0 ? 'var(--high)' : 'var(--ok)')
+    .attr('stroke-width', 2);
+
+  node.append('circle').attr('r', 4).attr('fill', d => d.flagged > 0 ? 'var(--high)' : 'var(--ok)');
+
+  node.append('text').attr('class','lbl-name').attr('y', d => radius(d.students) + 20).text(d => d.label);
+  node.append('text').attr('class','lbl-meta').attr('y', d => radius(d.students) + 36)
+    .text(d => `${d.students} students · ${d.flagged} flagged`);
+
+  node.on('mouseenter', function(e, d){
+      d3.select(this).select('.core').attr('filter','url(#nodeGlow)');
+      tooltip.style.opacity = 1;
+      tooltip.innerHTML = `<b>${d.label}</b><br>${d.batches} batch${d.batches===1?'':'es'} analyzed`;
+    })
+    .on('mousemove', function(e){
+      const rect = wrap.getBoundingClientRect();
+      tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
+      tooltip.style.top = (e.clientY - rect.top + 10) + 'px';
+    })
+    .on('mouseleave', function(){ d3.select(this).select('.core').attr('filter', null); tooltip.style.opacity = 0; })
+    .on('click', (e,d) => { state.cohortId = d.id; state.cohortLabel = d.label; renderCrumbs(); setView('viewBatches'); renderBatchList(); });
+}
+
+function renderBatchList(){
+  document.getElementById('cohortTitle').textContent = state.cohortLabel;
+  const list = document.getElementById('batchList');
+  const c = state.cohorts[state.cohortId];
+  if(!c) return;
+  const ids = Object.keys(c.batches);
+  if(ids.length === 0){ list.innerHTML = '<div class="empty-cohorts-box">No batches found for this cohort.</div>'; return; }
+  list.innerHTML = '';
+  ids.forEach(bid => {
+    const b = c.batches[bid];
+    const row = document.createElement('div');
+    row.className = 'batch-row';
+    row.innerHTML = `<div><div class="name">${b.label}</div><div class="meta">${b.studentCount} students compared</div></div><div class="flag">${b.flaggedCount} flagged</div>`;
+    row.addEventListener('click', async () => {
+      state.batchId = bid; state.batchLabel = b.label;
+      renderCrumbs(); setView('viewResults');
+      await loadBatch();
+    });
+    list.appendChild(row);
+  });
+}
+
+async function loadBatch(){
+  const res = await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}`);
+  state.batch = await res.json();
+  
+  // Smart Density Check
+  checkDensityAndAutoSwitch();
+  
+  renderResultsStats(); 
+  renderActivePanel();
+}
+
+function checkDensityAndAutoSwitch(){
+  if (!state.batch || !state.batch.pairs) return;
+  const filteredCount = state.batch.pairs.filter(p => p.similarity >= state.threshold).length;
+  const notice = document.getElementById('densityNotice');
+
+  if (filteredCount > 25 && !state.userSelectedPanel) {
+    state.panel = 'matrix';
+    notice.style.display = 'inline-flex';
+  } else {
+    notice.style.display = 'none';
+  }
+  updatePanelButtons();
+}
+
+function updatePanelButtons(){
+  document.querySelectorAll('.panel-toggle button').forEach(b => {
+    if (b.dataset.panel === state.panel) b.classList.add('active');
+    else b.classList.remove('active');
+  });
+}
+
+function renderActivePanel(){
+  document.getElementById('panelClusters').style.display = state.panel === 'clusters' ? 'block' : 'none';
+  document.getElementById('panelMatrix').style.display = state.panel === 'matrix' ? 'block' : 'none';
+  document.getElementById('panelTable').style.display = state.panel === 'table' ? 'block' : 'none';
+
+  if (state.panel === 'clusters') renderSmallMultiples();
+  else if (state.panel === 'matrix') renderMatrixView();
+  else if (state.panel === 'table') renderTable();
+}
+
+function renderResultsStats(){
+  const b = state.batch;
+  if (!b || !b.pairs) return;
+
+  const totalStudents = b.studentCount || 0;
+  const flaggedPairs = b.pairs.filter(p => p.similarity >= 80).length;
+  
+  let highestSim = 0;
+  let totalSim = 0;
+  if (b.pairs.length > 0) {
+    highestSim = Math.max(...b.pairs.map(p => p.similarity));
+    totalSim = b.pairs.reduce((sum, p) => sum + p.similarity, 0);
+  }
+  const avgSim = b.pairs.length > 0 ? (totalSim / b.pairs.length).toFixed(1) : 0;
+
+  document.getElementById('resultsStats').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Students</div>
+      <div class="stat-value">${totalStudents}</div>
+      <div class="stat-sub">Submissions analyzed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Flagged Pairs</div>
+      <div class="stat-value" style="color: ${flaggedPairs > 0 ? 'var(--high)' : 'var(--ok)'};">${flaggedPairs}</div>
+      <div class="stat-sub">Similarity ≥ 80%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Highest Similarity</div>
+      <div class="stat-value">${highestSim}%</div>
+      <div class="stat-sub">Peak match score</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Average Similarity</div>
+      <div class="stat-value">${avgSim}%</div>
+      <div class="stat-sub">Across all student pairs</div>
+    </div>`;
+}
+
+function scoreClass(s){ return s>=80?'high':s>=50?'med':'ok'; }
+
+/* =========================================================
+   Fix 1: Small Multiples Connected Component Cluster Grid
+   ========================================================= */
+function renderSmallMultiples(){
+  const grid = document.getElementById('clustersGrid');
+  grid.innerHTML = '';
+  document.getElementById('clustersEmpty').style.display = 'none';
+
+  if (!state.batch || !state.batch.pairs) return;
+
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  const filteredPairs = state.batch.pairs.filter(p =>
+    p.similarity >= state.threshold &&
+    (state.activeType==='all' || p.type===state.activeType) &&
+    (p.a.toLowerCase().includes(q) || p.b.toLowerCase().includes(q))
+  );
+
+  if (filteredPairs.length === 0) {
+    document.getElementById('clustersEmpty').style.display = 'block';
+    return;
+  }
+
+  // 1. Build Adjacency Graph
+  const adj = new Map();
+  filteredPairs.forEach(p => {
+    if (!adj.has(p.a)) adj.set(p.a, []);
+    if (!adj.has(p.b)) adj.set(p.b, []);
+    adj.get(p.a).push({ target: p.b, pair: p });
+    adj.get(p.b).push({ target: p.a, pair: p });
+  });
+
+  // 2. Compute Connected Components (BFS)
+  const visited = new Set();
+  const components = [];
+
+  for (const [node] of adj.entries()) {
+    if (visited.has(node)) continue;
+    
+    const componentNodes = [];
+    const componentPairsSet = new Set();
+    const queue = [node];
+    visited.add(node);
+
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      componentNodes.push(curr);
+
+      const neighbors = adj.get(curr) || [];
+      neighbors.forEach(({ target, pair }) => {
+        componentPairsSet.add(pair);
+        if (!visited.has(target)) {
+          visited.add(target);
+          queue.push(target);
+        }
+      });
+    }
+
+    const componentPairs = Array.from(componentPairsSet);
+    const maxSim = Math.max(...componentPairs.map(p => p.similarity));
+
+    components.push({
+      id: components.length + 1,
+      nodes: componentNodes,
+      pairs: componentPairs,
+      maxSim
+    });
+  }
+
+  // Sort components by highest max similarity first
+  components.sort((a, b) => b.maxSim - a.maxSim);
+
+  // 3. Render Each Component Card with Small D3 Simulation
+  components.forEach(comp => {
+    const card = document.createElement('div');
+    card.className = 'cluster-card';
+
+    const maxBadgeClass = comp.maxSim >= 80 ? '' : 'med';
+    card.innerHTML = `
+      <div class="cluster-card-head">
+        <div class="cluster-card-title">Cluster #${comp.id} (${comp.nodes.length} Students)</div>
+        <div class="cluster-card-badge ${maxBadgeClass}">Max ${comp.maxSim}%</div>
+      </div>
+      <svg class="cluster-svg" id="cluster-svg-${comp.id}"></svg>
+    `;
+    grid.appendChild(card);
+
+    // D3 Simulation for this single cluster card
+    const svg = d3.select(`#cluster-svg-${comp.id}`);
+    const width = 320;
+    const height = 210;
+    svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+    const nodesData = comp.nodes.map(id => ({ id }));
+    const linksData = comp.pairs.map(p => ({ source: p.a, target: p.b, value: p.similarity, pair: p }));
+
+    const sim = d3.forceSimulation(nodesData)
+      .force('link', d3.forceLink(linksData).id(d => d.id).distance(80).strength(0.6))
+      .force('charge', d3.forceManyBody().strength(-180))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collide', d3.forceCollide(32));
+
+    const link = svg.append('g').selectAll('line').data(linksData).join('line')
+      .attr('stroke', d => d.value >= 80 ? 'var(--high)' : 'var(--med)')
+      .attr('stroke-width', d => 1.5 + d.value / 35)
+      .attr('stroke-opacity', 0.8)
+      .style('cursor', 'pointer');
+
+    link.on('click', (e, d) => openDrawer(d.pair));
+
+    const node = svg.append('g').selectAll('g').data(nodesData).join('g')
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+        .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    node.append('circle').attr('r', 16)
+      .attr('fill', 'var(--surface)')
+      .attr('stroke', d => comp.pairs.some(p => (p.a === d.id || p.b === d.id) && p.similarity >= 80) ? 'var(--high)' : 'var(--primary)')
+      .attr('stroke-width', 2.5);
+
+    node.append('text')
+      .attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('font-size', '10px')
+      .attr('fill', 'var(--text)')
+      .attr('text-anchor', 'middle')
+      .attr('dy', 28)
+      .text(d => d.id);
+
+    node.on('click', (e, d) => {
+      const matchPair = comp.pairs.find(p => p.a === d.id || p.b === d.id);
+      if (matchPair) openDrawer(matchPair);
+    });
+
+    sim.on('tick', () => {
+      link.attr('x1', d => Math.max(20, Math.min(width-20, d.source.x)))
+          .attr('y1', d => Math.max(20, Math.min(height-30, d.source.y)))
+          .attr('x2', d => Math.max(20, Math.min(width-20, d.target.x)))
+          .attr('y2', d => Math.max(20, Math.min(height-30, d.target.y)));
+
+      node.attr('transform', d => {
+        d.x = Math.max(20, Math.min(width-20, d.x));
+        d.y = Math.max(20, Math.min(height-35, d.y));
+        return `translate(${d.x},${d.y})`;
+      });
+    });
+  });
+}
+
+/* =========================================================
+   Fix 2: Matrix View Layout for High Density Scaling
+   ========================================================= */
+function renderMatrixView(){
+  const svg = d3.select('#matrixSvg');
+  svg.selectAll('*').remove();
+  document.getElementById('matrixEmpty').style.display = 'none';
+
+  if (!state.batch || !state.batch.pairs) return;
+
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  const filteredPairs = state.batch.pairs.filter(p =>
+    p.similarity >= state.threshold &&
+    (state.activeType==='all' || p.type===state.activeType) &&
+    (p.a.toLowerCase().includes(q) || p.b.toLowerCase().includes(q))
+  );
+
+  if (filteredPairs.length === 0) {
+    document.getElementById('matrixEmpty').style.display = 'block';
+    return;
+  }
+
+  // Collect unique student names
+  const studentSet = new Set(filteredPairs.flatMap(p => [p.a, p.b]));
+  const rawStudents = Array.from(studentSet);
+
+  // Build matrix lookup
+  const pairMap = new Map();
+  filteredPairs.forEach(p => {
+    pairMap.set(`${p.a}__${p.b}`, p);
+    pairMap.set(`${p.b}__${p.a}`, p);
+  });
+
+  // Reorder students using greedy cluster ordering so matched students sit next to each other
+  const orderedStudents = [];
+  const unvisited = new Set(rawStudents);
+
+  while (unvisited.size > 0) {
+    const start = Array.from(unvisited)[0];
+    orderedStudents.push(start);
+    unvisited.delete(start);
+
+    let curr = start;
+    while (true) {
+      let bestNeighbor = null;
+      let maxSim = -1;
+
+      for (const candidate of unvisited) {
+        const pair = pairMap.get(`${curr}__${candidate}`);
+        if (pair && pair.similarity > maxSim) {
+          maxSim = pair.similarity;
+          bestNeighbor = candidate;
+        }
+      }
+
+      if (bestNeighbor) {
+        orderedStudents.push(bestNeighbor);
+        unvisited.delete(bestNeighbor);
+        curr = bestNeighbor;
+      } else {
+        break;
+      }
+    }
+  }
+
+  const n = orderedStudents.length;
+  const cellSize = Math.max(28, Math.min(48, Math.floor(700 / n)));
+  const margin = { top: 120, left: 140, right: 30, bottom: 30 };
+  const width = margin.left + n * cellSize + margin.right;
+  const height = margin.top + n * cellSize + margin.bottom;
+
+  svg.attr('width', width).attr('height', height);
+
+  const tooltip = document.getElementById('matrixTooltip');
+
+  // Matrix group
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Column Labels (Top)
+  g.selectAll('.colLabel')
+    .data(orderedStudents).join('text')
+    .attr('class', 'colLabel')
+    .attr('x', (d, i) => i * cellSize + cellSize / 2)
+    .attr('y', -10)
+    .attr('text-anchor', 'start')
+    .attr('transform', (d, i) => `rotate(-45, ${i * cellSize + cellSize / 2}, -10)`)
+    .attr('font-family', 'IBM Plex Mono, monospace')
+    .attr('font-size', '11px')
+    .attr('fill', 'var(--text)')
+    .text(d => d);
+
+  // Row Labels (Left)
+  g.selectAll('.rowLabel')
+    .data(orderedStudents).join('text')
+    .attr('class', 'rowLabel')
+    .attr('x', -10)
+    .attr('y', (d, i) => i * cellSize + cellSize / 2 + 4)
+    .attr('text-anchor', 'end')
+    .attr('font-family', 'IBM Plex Mono, monospace')
+    .attr('font-size', '11px')
+    .attr('fill', 'var(--text)')
+    .text(d => d);
+
+  // Render Grid Cells
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const s1 = orderedStudents[i];
+      const s2 = orderedStudents[j];
+
+      const cell = g.append('rect')
+        .attr('x', j * cellSize)
+        .attr('y', i * cellSize)
+        .attr('width', cellSize - 2)
+        .attr('height', cellSize - 2)
+        .attr('rx', 4);
+
+      if (i === j) {
+        // Diagonal self-cell
+        cell.attr('fill', 'var(--surface-2)');
+      } else {
+        const pair = pairMap.get(`${s1}__${s2}`);
+        if (pair) {
+          const sim = pair.similarity;
+          const color = sim >= 80 ? 'var(--high)' : 'var(--med)';
+          const opacity = Math.max(0.3, sim / 100);
+
+          cell.attr('fill', color)
+            .attr('fill-opacity', opacity)
+            .style('cursor', 'pointer');
+
+          cell.on('mouseenter', (e) => {
+              tooltip.style.opacity = 1;
+              tooltip.innerHTML = `<b>${s1} ↔ ${s2}</b><br>Similarity: <b>${sim}%</b> (${pair.type})`;
+            })
+            .on('mousemove', (e) => {
+              const rect = document.getElementById('matrixWrap').getBoundingClientRect();
+              tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
+              tooltip.style.top = (e.clientY - rect.top + 10) + 'px';
+            })
+            .on('mouseleave', () => { tooltip.style.opacity = 0; })
+            .on('click', () => openDrawer(pair));
+        } else {
+          cell.attr('fill', 'var(--surface-2)').attr('fill-opacity', 0.4);
+        }
+      }
+    }
+  }
+}
+
+function renderTable(){
+  const tbody = document.getElementById('tbody');
+  if (!state.batch || !state.batch.pairs) return;
+
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  const filtered = state.batch.pairs.filter(p =>
+    p.similarity >= state.threshold &&
+    (state.activeType==='all' || p.type===state.activeType) &&
+    (p.a.toLowerCase().includes(q) || p.b.toLowerCase().includes(q))
+  ).sort((a,b)=>b.similarity-a.similarity);
+
+  tbody.innerHTML = '';
+  document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
+  filtered.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><div class="students">${p.a} ↔ ${p.b}${p.crossBatch ? '<small>Cross-batch match</small>' : ''}</div></td>
+      <td><span class="type-pill">${p.type}</span></td>
+      <td><span class="score ${scoreClass(p.similarity)}">${p.similarity}%</span></td>
+      <td><select class="status-select" onclick="event.stopPropagation()" onchange="setStatus('${p.id}', this.value)">
+        <option ${p.status==='Pending'?'selected':''}>Pending</option>
+        <option ${p.status==='Confirmed'?'selected':''}>Confirmed</option>
+        <option ${p.status==='Cleared'?'selected':''}>Cleared</option>
+      </select></td>`;
+    tr.addEventListener('click', () => openDrawer(p));
+    tbody.appendChild(tr);
+  });
+}
+
+async function setStatus(pairId, status){
+  await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}/status`, {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: `pair_id=${encodeURIComponent(pairId)}&status=${encodeURIComponent(status)}`
+  });
+  const p = state.batch.pairs.find(p=>p.id===pairId); if(p) p.status = status;
+}
+
+document.getElementById('search').addEventListener('input', () => {
+  renderActivePanel();
+});
+
+document.getElementById('thresholdSlider').addEventListener('input', function(){
+  state.threshold = +this.value;
+  document.getElementById('sliderVal').textContent = this.value + '%';
+  
+  // Sync chip active states
+  document.querySelectorAll('.sim-chip').forEach(chip => {
+    if (+chip.dataset.threshold === state.threshold) chip.classList.add('active');
+    else chip.classList.remove('active');
+  });
+
+  checkDensityAndAutoSwitch();
+  renderActivePanel();
+});
+
+document.querySelectorAll('.chip[data-type]').forEach(chip => chip.addEventListener('click', function(){
+  document.querySelectorAll('.chip[data-type]').forEach(c=>c.classList.remove('active'));
+  this.classList.add('active'); state.activeType = this.dataset.type;
+  renderActivePanel();
+}));
+
+document.querySelectorAll('.sim-chip').forEach(chip => chip.addEventListener('click', function(){
+  document.querySelectorAll('.sim-chip').forEach(c=>c.classList.remove('active'));
+  this.classList.add('active');
+  state.threshold = +this.dataset.threshold;
+  document.getElementById('thresholdSlider').value = state.threshold;
+  document.getElementById('sliderVal').textContent = state.threshold + '%';
+  checkDensityAndAutoSwitch();
+  renderActivePanel();
+}));
+
+document.querySelectorAll('.panel-toggle button').forEach(b => b.addEventListener('click', function(){
+  state.userSelectedPanel = true;
+  state.panel = this.dataset.panel;
+  updatePanelButtons();
+  renderActivePanel();
+}));
+
+const drawer = document.getElementById('drawer');
+function openDrawer(p){
+  document.getElementById('drawerTitle').textContent = p.a + '  vs.  ' + p.b;
+  document.getElementById('drawerSub').textContent = p.type + ' · ' + p.similarity + '% similarity' + (p.crossBatch ? ' · cross-batch' : '');
+  document.getElementById('drawerNote').textContent = p.similarity >= 80
+    ? 'High confidence similarity match. Recommend academic review before resubmission.'
+    : 'Moderate similarity. May reflect template code or common assignment structures.';
+  const mm = document.getElementById('drawerMatches');
+  mm.innerHTML = (p.matches && p.matches.length)
+    ? p.matches.map(m => `<div class="matchrow">Line ${m.aLines ?? '?'} in ${p.a} ↔ line ${m.bLines ?? '?'} in ${p.b}, ${m.length ?? '?'} tokens matched</div>`).join('')
+    : '<div class="matchrow">No line-level detail available for this pair.</div>';
+  document.getElementById('btnConfirm').onclick = () => { setStatus(p.id,'Confirmed'); closeDrawer(); renderActivePanel(); };
+  document.getElementById('btnClear').onclick = () => { setStatus(p.id,'Cleared'); closeDrawer(); renderActivePanel(); };
+  drawer.classList.add('open'); document.getElementById('drawerScrim').classList.add('open');
+}
+function closeDrawer(){ drawer.classList.remove('open'); document.getElementById('drawerScrim').classList.remove('open'); }
+document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+document.getElementById('drawerScrim').addEventListener('click', closeDrawer);
+
+const uploadModal = document.getElementById('uploadModal');
+const uploadScrim = document.getElementById('uploadScrim');
+let pickedFile = null;
+
+document.getElementById('openUpload').addEventListener('click', () => { uploadModal.classList.add('open'); uploadScrim.classList.add('open'); });
+document.getElementById('cancelUpload').addEventListener('click', closeUpload);
+uploadScrim.addEventListener('click', closeUpload);
+function closeUpload(){ uploadModal.classList.remove('open'); uploadScrim.classList.remove('open'); }
+
+const dz = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+dz.addEventListener('click', () => fileInput.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('hover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('hover'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('hover'); pickedFile = e.dataTransfer.files[0]; updateDzLabel(); });
+fileInput.addEventListener('change', () => { pickedFile = fileInput.files[0]; updateDzLabel(); });
+function updateDzLabel(){ document.getElementById('dzLabel').textContent = pickedFile ? pickedFile.name : 'Drop a .zip file here or click to browse'; }
+
+document.getElementById('submitUpload').addEventListener('click', async () => {
+  const cohortLabel = document.getElementById('fCohortLabel').value.trim();
+  const batchLabel = document.getElementById('fBatchLabel').value.trim();
+  const mode = document.getElementById('fMode').value;
+  const status = document.getElementById('runStatus');
+
+  if(!cohortLabel || !batchLabel || !pickedFile){ status.textContent = 'Please complete all fields and choose a .zip file.'; return; }
+
+  const cohortId = slugify(cohortLabel);
+  const batchId = slugify(batchLabel);
+
+  const fd = new FormData();
+  fd.append('cohort_id', cohortId); fd.append('cohort_label', cohortLabel);
+  fd.append('batch_id', batchId); fd.append('batch_label', batchLabel);
+  fd.append('mode', mode);
+  fd.append('submissions_zip', pickedFile);
+
+  status.textContent = 'Running similarity analysis, this may take a moment…';
+  try{
+    const res = await fetch(API + '/run', { method:'POST', body: fd });
+    if(!res.ok){ const err = await res.json(); status.textContent = err.detail || 'Something went wrong.'; return; }
+    status.textContent = 'Analysis complete.';
+    setTimeout(async () => {
+      closeUpload();
+      state.cohortId = cohortId; state.cohortLabel = cohortLabel;
+      state.batchId = batchId; state.batchLabel = batchLabel;
+      renderCrumbs(); setView('viewResults');
+      await loadBatch();
+    }, 500);
+  } catch(e){
+    status.textContent = 'Could not connect to backend server on localhost:8000.';
+  }
+});
+function slugify(s){ return s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
+
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  if(state.batchId) await loadBatch();
+  else if(state.cohortId){ await loadCohorts(); renderBatchList(); }
+  else { await loadCohorts(); renderCohortGrid(); }
+});
+
+(async function boot(){
+  await loadCohorts();
+  renderCrumbs();
+  renderCohortGrid();
+})();
+</script>
+</body>
+</html>

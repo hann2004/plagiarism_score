@@ -1,0 +1,98 @@
+"""
+Deliberately simple storage: one JSON file per batch, plus an index file
+listing all cohorts and batches. Good enough for weekly batches across
+a handful of cohorts; swap for a real database later without changing
+the API shape much.
+"""
+import json
+from pathlib import Path
+
+
+class Storage:
+    def __init__(self, data_dir: Path):
+        self.data_dir = data_dir
+        self.index_path = data_dir / "index.json"
+        if not self.index_path.exists():
+            self._write_index({"cohorts": {}})
+
+    def _read_index(self) -> dict:
+        with open(self.index_path) as f:
+            return json.load(f)
+
+    def _write_index(self, index: dict):
+        with open(self.index_path, "w") as f:
+            json.dump(index, f, indent=2)
+
+    def _batch_path(self, cohort_id: str, batch_id: str) -> Path:
+        return self.data_dir / f"{cohort_id}__{batch_id}.json"
+
+    def list_cohorts(self) -> dict:
+        return self._read_index()["cohorts"]
+
+    def get_batch(self, cohort_id: str, batch_id: str):
+        path = self._batch_path(cohort_id, batch_id)
+        if not path.exists():
+            return None
+        with open(path) as f:
+            return json.load(f)
+
+    def set_pair_status(self, cohort_id: str, batch_id: str, pair_id: str, status: str) -> bool:
+        batch = self.get_batch(cohort_id, batch_id)
+        if not batch:
+            return False
+        found = False
+        for p in batch["pairs"]:
+            if p["id"] == pair_id:
+                p["status"] = status
+                found = True
+                break
+        if found:
+            with open(self._batch_path(cohort_id, batch_id), "w") as f:
+                json.dump(batch, f, indent=2)
+        return found
+
+    def save_run(self, cohort_id, cohort_label, batch_id, batch_label, mode,
+                 student_folders, comparisons) -> dict:
+        existing = self.get_batch(cohort_id, batch_id) or {
+            "cohortId": cohort_id, "cohortLabel": cohort_label,
+            "batchId": batch_id, "batchLabel": batch_label,
+            "studentCount": 0, "pairs": [],
+        }
+
+        existing["studentCount"] = max(existing["studentCount"], len(student_folders))
+
+        # index existing pairs by (a,b,mode) so re-running one mode (code vs report)
+        # doesn't wipe out results already stored for the other mode
+        existing_by_key = {(p["a"], p["b"], p["type"]): p for p in existing["pairs"]}
+        for c in comparisons:
+            key = (c["a"], c["b"], mode)
+            reverse_key = (c["b"], c["a"], mode)
+            prior = existing_by_key.get(key) or existing_by_key.get(reverse_key)
+            pair_id = prior["id"] if prior else f"{cohort_id}-{batch_id}-{mode}-{c['a']}-{c['b']}"
+            status = prior["status"] if prior else "Pending"
+            entry = {
+                "id": pair_id,
+                "a": c["a"], "b": c["b"],
+                "type": "Code" if mode == "code" else "Report",
+                "similarity": c["similarity"],
+                "matches": c["matches"],
+                "status": status,
+                "crossBatch": False,
+            }
+            existing_by_key[key] = entry
+
+        existing["pairs"] = list(existing_by_key.values())
+
+        with open(self._batch_path(cohort_id, batch_id), "w") as f:
+            json.dump(existing, f, indent=2)
+
+        index = self._read_index()
+        cohort = index["cohorts"].setdefault(cohort_id, {"label": cohort_label, "batches": {}})
+        cohort["batches"][batch_id] = {
+            "label": batch_label,
+            "studentCount": existing["studentCount"],
+            "flaggedCount": sum(1 for p in existing["pairs"] if p["similarity"] >= 80),
+        }
+        self._write_index(index)
+
+        return existing
