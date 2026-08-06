@@ -202,7 +202,7 @@
     </div>
     <div class="orbit-wrap" id="orbitWrap">
       <div class="orbit-legend">
-        <span><span class="dot" style="background:var(--high)"></span>Flagged pairs present (≥80%)</span>
+        <span><span class="dot" style="background:var(--high)"></span>Flagged pairs present (≥90%)</span>
         <span><span class="dot" style="background:var(--ok)"></span>Clean batch</span>
         <span style="color:var(--faint); margin-left:auto;">Node size reflects cohort size</span>
       </div>
@@ -237,12 +237,12 @@
         <button class="chip sim-chip" data-threshold="0">All</button>
         <button class="chip sim-chip" data-threshold="60">60%+</button>
         <button class="chip sim-chip" data-threshold="70">70%+</button>
-        <button class="chip sim-chip active" data-threshold="80">80%+</button>
-        <button class="chip sim-chip" data-threshold="90">90%+</button>
+        <button class="chip sim-chip" data-threshold="80">80%+</button>
+        <button class="chip sim-chip active" data-threshold="90">90%+</button>
       </div>
 
       <div class="slider-wrap">
-        Threshold <input type="range" min="0" max="95" value="80" id="thresholdSlider"><span class="mono" id="sliderVal">80%</span>
+        Threshold <input type="range" min="0" max="95" value="90" id="thresholdSlider"><span class="mono" id="sliderVal">90%</span>
       </div>
     </div>
 
@@ -253,6 +253,7 @@
         <button data-panel="table">Data Table</button>
       </div>
       <div class="density-notice" id="densityNotice">⚡ Auto-switched to Matrix View for high pair density (&gt;25 pairs)</div>
+      <button class="btn" style="margin-left: auto; color: var(--high); border-color: rgba(214, 69, 69, 0.3);" id="deleteBatchBtn">Delete Comparison</button>
     </div>
 
     <!-- Fix 1: Small Multiples Cluster Grid -->
@@ -323,7 +324,7 @@ let state = {
   cohortId: null, cohortLabel: null,
   batchId: null, batchLabel: null,
   batch: null, cohorts: {},
-  activeType: 'all', threshold: 80, panel: 'clusters',
+  activeType: 'all', threshold: 90, panel: 'clusters',
   userSelectedPanel: false
 };
 
@@ -516,7 +517,7 @@ function renderResultsStats(){
   if (!b || !b.pairs) return;
 
   const totalStudents = b.studentCount || 0;
-  const flaggedPairs = b.pairs.filter(p => p.similarity >= 80).length;
+  const flaggedPairs = b.pairs.filter(p => p.similarity >= 90).length;
   
   let highestSim = 0;
   let totalSim = 0;
@@ -535,7 +536,7 @@ function renderResultsStats(){
     <div class="stat-card">
       <div class="stat-label">Flagged Pairs</div>
       <div class="stat-value" style="color: ${flaggedPairs > 0 ? 'var(--high)' : 'var(--ok)'};">${flaggedPairs}</div>
-      <div class="stat-sub">Similarity ≥ 80%</div>
+      <div class="stat-sub">Similarity ≥ 90%</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Highest Similarity</div>
@@ -549,7 +550,7 @@ function renderResultsStats(){
     </div>`;
 }
 
-function scoreClass(s){ return s>=80?'high':s>=50?'med':'ok'; }
+function scoreClass(s){ return s>=90?'high':s>=60?'med':'ok'; }
 
 /* =========================================================
    Fix 1: Small Multiples Connected Component Cluster Grid
@@ -627,7 +628,7 @@ function renderSmallMultiples(){
     const card = document.createElement('div');
     card.className = 'cluster-card';
 
-    const maxBadgeClass = comp.maxSim >= 80 ? '' : 'med';
+    const maxBadgeClass = comp.maxSim >= 90 ? '' : 'med';
     card.innerHTML = `
       <div class="cluster-card-head">
         <div class="cluster-card-title">Cluster #${comp.id} (${comp.nodes.length} Students)</div>
@@ -653,7 +654,7 @@ function renderSmallMultiples(){
       .force('collide', d3.forceCollide(32));
 
     const link = svg.append('g').selectAll('line').data(linksData).join('line')
-      .attr('stroke', d => d.value >= 80 ? 'var(--high)' : 'var(--med)')
+      .attr('stroke', d => d.value >= 90 ? 'var(--high)' : 'var(--med)')
       .attr('stroke-width', d => 1.5 + d.value / 35)
       .attr('stroke-opacity', 0.8)
       .style('cursor', 'pointer');
@@ -669,7 +670,7 @@ function renderSmallMultiples(){
 
     node.append('circle').attr('r', 16)
       .attr('fill', 'var(--surface)')
-      .attr('stroke', d => comp.pairs.some(p => (p.a === d.id || p.b === d.id) && p.similarity >= 80) ? 'var(--high)' : 'var(--primary)')
+      .attr('stroke', d => comp.pairs.some(p => (p.a === d.id || p.b === d.id) && p.similarity >= 90) ? 'var(--high)' : 'var(--primary)')
       .attr('stroke-width', 2.5);
 
     node.append('text')
@@ -823,7 +824,7 @@ function renderMatrixView(){
         const pair = pairMap.get(`${s1}__${s2}`);
         if (pair) {
           const sim = pair.similarity;
-          const color = sim >= 80 ? 'var(--high)' : 'var(--med)';
+          const color = sim >= 90 ? 'var(--high)' : 'var(--med)';
           const opacity = Math.max(0.3, sim / 100);
 
           cell.attr('fill', color)
@@ -931,7 +932,7 @@ const drawer = document.getElementById('drawer');
 function openDrawer(p){
   document.getElementById('drawerTitle').textContent = p.a + '  vs.  ' + p.b;
   document.getElementById('drawerSub').textContent = p.type + ' · ' + p.similarity + '% similarity' + (p.crossBatch ? ' · cross-batch' : '');
-  document.getElementById('drawerNote').textContent = p.similarity >= 80
+  document.getElementById('drawerNote').textContent = p.similarity >= 90
     ? 'High confidence similarity match. Recommend academic review before resubmission.'
     : 'Moderate similarity. May reflect template code or common assignment structures.';
   const mm = document.getElementById('drawerMatches');
@@ -1003,6 +1004,20 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
   if(state.batchId) await loadBatch();
   else if(state.cohortId){ await loadCohorts(); renderBatchList(); }
   else { await loadCohorts(); renderCohortGrid(); }
+});
+
+document.getElementById('deleteBatchBtn').addEventListener('click', async () => {
+  if(!confirm("Are you sure you want to delete this comparison? This action cannot be undone.")) return;
+  try {
+    const res = await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}`, { method: 'DELETE' });
+    if(res.ok) {
+      await goBatches();
+    } else {
+      alert("Failed to delete batch.");
+    }
+  } catch(e) {
+    alert("Error communicating with server.");
+  }
 });
 
 (async function boot(){

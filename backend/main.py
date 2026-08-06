@@ -61,6 +61,21 @@ def get_batch(cohort_id: str, batch_id: str):
     return batch
 
 
+@app.delete("/api/cohorts/{cohort_id}/batches/{batch_id}")
+def delete_batch(cohort_id: str, batch_id: str):
+    ok = storage.delete_batch(cohort_id, batch_id)
+    if not ok:
+        raise HTTPException(404, "Batch not found.")
+    
+    # Also clean up work directories if they exist
+    for mode in ["code", "report"]:
+        run_dir = WORK_DIR / f"{cohort_id}__{batch_id}__{mode}"
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+            
+    return {"ok": True}
+
+
 @app.post("/api/cohorts/{cohort_id}/batches/{batch_id}/status")
 def set_status(cohort_id: str, batch_id: str, pair_id: str = Form(...), status: str = Form(...)):
     ok = storage.set_pair_status(cohort_id, batch_id, pair_id, status)

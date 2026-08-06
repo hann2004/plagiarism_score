@@ -91,8 +91,30 @@ class Storage:
         cohort["batches"][batch_id] = {
             "label": batch_label,
             "studentCount": existing["studentCount"],
-            "flaggedCount": sum(1 for p in existing["pairs"] if p["similarity"] >= 80),
+            "flaggedCount": sum(1 for p in existing["pairs"] if p["similarity"] >= 90),
         }
         self._write_index(index)
 
         return existing
+
+    def delete_batch(self, cohort_id: str, batch_id: str) -> bool:
+        path = self._batch_path(cohort_id, batch_id)
+        if not path.exists():
+            return False
+        
+        # Remove batch file
+        path.unlink()
+        
+        # Update index
+        index = self._read_index()
+        if cohort_id in index["cohorts"]:
+            cohort = index["cohorts"][cohort_id]
+            if batch_id in cohort["batches"]:
+                del cohort["batches"][batch_id]
+                # Optional: if cohort is empty, you could delete it, but let's just leave it empty 
+                # or remove it for cleanliness. Let's remove it if empty.
+                if not cohort["batches"]:
+                    del index["cohorts"][cohort_id]
+                self._write_index(index)
+        
+        return True
