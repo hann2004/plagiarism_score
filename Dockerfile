@@ -1,9 +1,9 @@
 # Use official Python 3.12 slim base image
 FROM python:3.12-slim
 
-# Install OpenJDK 17 JRE (required by JPlag), wget, and utilities
+# Install Java JRE (default-jre-headless), wget, and utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
+    default-jre-headless \
     wget \
     curl \
     unzip \
