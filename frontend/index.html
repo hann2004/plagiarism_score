@@ -168,16 +168,30 @@
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
   .run-status { font-size: 13px; color: var(--muted); margin-top: 14px; min-height: 18px; font-weight: 500; }
 
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 640px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .25s ease; z-index: 22; overflow-y: auto; padding: 32px; box-shadow: -10px 0 30px rgba(0,0,0,0.5); }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 90vw; max-width: 1200px; background: var(--bg); border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .25s ease; z-index: 22; overflow-y: auto; padding: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; }
   .drawer.open { transform: translateX(0); }
-  .drawer-close { background: none; border: none; color: var(--faint); font-size: 24px; cursor: pointer; float: right; font-weight: 400; }
+  .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; }
+  .drawer-header h2 { font-weight: 700; font-size: 17px; margin: 0; color: var(--text); }
+  .drawer-header .sub { color: var(--muted); font-size: 12.5px; font-weight: 500; }
+  .drawer-close { background: none; border: none; color: var(--faint); font-size: 24px; cursor: pointer; font-weight: 400; }
   .drawer-close:hover { color: var(--text); }
-  .drawer h2 { font-weight: 700; font-size: 20px; margin: 0 0 6px; color: var(--text); }
-  .drawer .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 24px; font-weight: 500; }
-  .matchlist { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
-  .matchrow { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--text); font-family: 'IBM Plex Mono', monospace; }
-  .verdict-note { background: var(--med-bg); border: 1px solid var(--med); border-radius: 10px; padding: 14px 16px; font-size: 13.5px; color: var(--med); margin-bottom: 24px; line-height: 1.5; }
-  .drawer-actions { display: flex; gap: 12px; }
+  .drawer-nav { display: flex; align-items: center; gap: 12px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; }
+  .drawer-nav button { background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-family: 'Inter', sans-serif; }
+  .drawer-nav button:hover { border-color: var(--primary); }
+  .drawer-nav .nav-label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+  .diff-body { display: flex; flex: 1; overflow: hidden; }
+  .diff-pane { flex: 1; overflow-y: auto; position: relative; border-right: 1px solid var(--line); }
+  .diff-pane:last-child { border-right: none; }
+  .diff-pane-header { padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--muted); position: sticky; top: 0; z-index: 2; }
+  .diff-pane pre { margin: 0; padding: 12px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text); counter-reset: line; }
+  .diff-pane .line { display: block; }
+  .diff-pane .line::before { counter-increment: line; content: counter(line); display: inline-block; width: 3em; margin-right: 12px; text-align: right; color: var(--faint); font-size: 11px; user-select: none; }
+  .diff-pane .line.match-active { background: rgba(214, 69, 69, 0.25); border-left: 3px solid var(--high); }
+  .diff-pane .line.match-other { background: rgba(217, 164, 65, 0.12); }
+  .diff-minimap { position: absolute; right: 0; top: 36px; bottom: 0; width: 8px; background: var(--surface-2); }
+  .diff-minimap-tick { position: absolute; right: 0; width: 8px; background: var(--high); opacity: 0.7; border-radius: 1px; min-height: 2px; }
+  .drawer-actions { display: flex; gap: 12px; padding: 14px 24px; background: var(--surface); border-top: 1px solid var(--line); flex-shrink: 0; }
+  .verdict-note { background: var(--med-bg); border: 1px solid var(--med); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--med); line-height: 1.5; margin: 0 24px 0; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -264,9 +278,22 @@
 
     <!-- Fix 2: Matrix View -->
     <div id="panelMatrix" style="display:none;">
-      <div class="matrix-wrap" id="matrixWrap">
-        <svg class="matrix-svg" id="matrixSvg"></svg>
-        <div class="matrix-tooltip" id="matrixTooltip"></div>
+      <div class="matrix-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <h3 style="font-weight: 700; font-size: 17px; margin: 0; color: var(--text);">Similarity Matrix Heatmap</h3>
+            <p style="margin: 4px 0 0; font-size: 13px; color: var(--muted);">Students ordered using nearest-neighbor seriation so plagiarized groups cluster together along the diagonal.</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); font-family: 'IBM Plex Mono', monospace;">
+            <span>0% Clean</span>
+            <div style="width: 140px; height: 10px; border-radius: 5px; background: linear-gradient(to right, #1c1915, #3d5a45 35%, #d9a441 70%, #ff3b30 100%); border: 1px solid var(--line);"></div>
+            <span>100% Flagged</span>
+          </div>
+        </div>
+        <div class="matrix-wrap" id="matrixWrap" style="overflow-x: auto; position: relative;">
+          <svg class="matrix-svg" id="matrixSvg"></svg>
+          <div class="matrix-tooltip" id="matrixTooltip"></div>
+        </div>
       </div>
       <div class="empty" id="matrixEmpty" style="display:none;">No similarity matches to display in matrix view.</div>
     </div>
@@ -323,11 +350,37 @@
 
 <div class="scrim" id="drawerScrim"></div>
 <div class="drawer" id="drawer">
-  <button class="drawer-close" id="drawerClose">×</button>
-  <h2 id="drawerTitle">—</h2>
-  <div class="sub" id="drawerSub">—</div>
+  <div class="drawer-header">
+    <div>
+      <h2 id="drawerTitle">—</h2>
+      <div class="sub" id="drawerSub">—</div>
+    </div>
+    <button class="drawer-close" id="drawerClose">×</button>
+  </div>
+  <div class="drawer-nav" id="drawerNav">
+    <button id="matchPrev">◀</button>
+    <span class="nav-label" id="matchLabel">Match 1 / 3</span>
+    <button id="matchNext">▶</button>
+  </div>
   <div class="verdict-note" id="drawerNote"></div>
-  <div class="matchlist" id="drawerMatches"></div>
+  <div class="diff-body" id="diffBody">
+    <div class="diff-pane" id="diffPaneA">
+      <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <span id="diffStudentA" style="font-weight: 700;">Student A</span>
+        <select id="diffSelectA" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; max-width: 240px; outline: none; cursor: pointer;"></select>
+      </div>
+      <pre id="diffContentA"></pre>
+      <div class="diff-minimap" id="minimapA"></div>
+    </div>
+    <div class="diff-pane" id="diffPaneB">
+      <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <span id="diffStudentB" style="font-weight: 700;">Student B</span>
+        <select id="diffSelectB" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; max-width: 240px; outline: none; cursor: pointer;"></select>
+      </div>
+      <pre id="diffContentB"></pre>
+      <div class="diff-minimap" id="minimapB"></div>
+    </div>
+  </div>
   <div class="drawer-actions">
     <button class="btn btn-primary" id="btnConfirm">Confirm Plagiarism Match</button>
     <button class="btn" id="btnClear">Mark as False Positive</button>
@@ -335,7 +388,7 @@
 </div>
 
 <script>
-const API = "http://localhost:8000/api";
+const API = location.hostname === 'localhost' ? 'http://localhost:8000/api' : '/api';
 let state = {
   cohortId: null, cohortLabel: null,
   batchId: null, batchLabel: null,
@@ -364,8 +417,13 @@ async function goHome(){
 }
 async function goBatches(){
   state.batchId = null; state.batchLabel = null;
-  renderCrumbs(); setView('viewBatches');
-  await loadCohorts(); renderBatchList();
+  await loadCohorts();
+  if(state.cohorts[state.cohortId]){
+    renderCrumbs(); setView('viewBatches'); renderBatchList();
+  } else {
+    state.cohortId = null; state.cohortLabel = null;
+    renderCrumbs(); setView('viewCohorts'); renderCohortGrid();
+  }
 }
 document.getElementById('brandHome').addEventListener('click', goHome);
 
@@ -605,11 +663,14 @@ function renderSmallMultiples(){
 
   // 1. Build Adjacency Graph
   const adj = new Map();
+  const degrees = new Map();
   filteredPairs.forEach(p => {
     if (!adj.has(p.a)) adj.set(p.a, []);
     if (!adj.has(p.b)) adj.set(p.b, []);
     adj.get(p.a).push({ target: p.b, pair: p });
     adj.get(p.b).push({ target: p.a, pair: p });
+    degrees.set(p.a, (degrees.get(p.a) || 0) + 1);
+    degrees.set(p.b, (degrees.get(p.b) || 0) + 1);
   });
 
   // 2. Compute Connected Components (BFS)
@@ -649,13 +710,13 @@ function renderSmallMultiples(){
     });
   }
 
-  // Sort components by highest max similarity first
   components.sort((a, b) => b.maxSim - a.maxSim);
 
-  // 3. Render Each Component Card with Small D3 Simulation
+  // 3. Render Each Component Card with Small D3 Simulation + Hulls + Scale Dots
   components.forEach(comp => {
     const card = document.createElement('div');
     card.className = 'cluster-card';
+    card.style.position = 'relative';
 
     const maxBadgeClass = comp.maxSim >= 90 ? '' : 'med';
     card.innerHTML = `
@@ -663,29 +724,55 @@ function renderSmallMultiples(){
         <div class="cluster-card-title">Cluster #${comp.id} (${comp.nodes.length} Students)</div>
         <div class="cluster-card-badge ${maxBadgeClass}">Max ${comp.maxSim}%</div>
       </div>
-      <svg class="cluster-svg" id="cluster-svg-${comp.id}"></svg>
+      <svg class="cluster-svg" id="cluster-svg-${comp.id}" style="background: radial-gradient(circle at center, var(--surface-2) 0%, var(--bg) 100%);"></svg>
     `;
     grid.appendChild(card);
 
-    // D3 Simulation for this single cluster card
     const svg = d3.select(`#cluster-svg-${comp.id}`);
     const width = 320;
     const height = 210;
     svg.attr('viewBox', `0 0 ${width} ${height}`);
 
-    const nodesData = comp.nodes.map(id => ({ id }));
+    // Render scale context dots (unflagged students for scale)
+    const totalStudents = state.batch.studentCount || 0;
+    const unflaggedCount = Math.max(0, Math.min(15, totalStudents - comp.nodes.length));
+    const bgDots = [];
+    for (let i = 0; i < unflaggedCount; i++) {
+      bgDots.push({
+        x: 20 + Math.random() * (width - 40),
+        y: 20 + Math.random() * (height - 40)
+      });
+    }
+
+    svg.append('g').selectAll('circle')
+      .data(bgDots).join('circle')
+      .attr('cx', d => d.x).attr('cy', d => d.y)
+      .attr('r', 2)
+      .attr('fill', 'var(--faint)')
+      .attr('opacity', 0.25);
+
+    const nodesData = comp.nodes.map(id => ({ id, degree: degrees.get(id) || 1 }));
     const linksData = comp.pairs.map(p => ({ source: p.a, target: p.b, value: p.similarity, pair: p }));
 
     const sim = d3.forceSimulation(nodesData)
-      .force('link', d3.forceLink(linksData).id(d => d.id).distance(80).strength(0.6))
-      .force('charge', d3.forceManyBody().strength(-180))
+      .force('link', d3.forceLink(linksData).id(d => d.id).distance(75).strength(0.6))
+      .force('charge', d3.forceManyBody().strength(-160))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide(32));
+      .force('collide', d3.forceCollide(28));
 
-    const link = svg.append('g').selectAll('line').data(linksData).join('line')
+    // Hull path element behind links/nodes
+    const hullGroup = svg.append('g').attr('class', 'hull-group');
+    const hullPath = hullGroup.append('path')
+      .attr('fill', comp.maxSim >= 90 ? 'rgba(214, 69, 69, 0.08)' : 'rgba(217, 164, 65, 0.08)')
+      .attr('stroke', comp.maxSim >= 90 ? 'rgba(214, 69, 69, 0.2)' : 'rgba(217, 164, 65, 0.2)')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-linejoin', 'round');
+
+    const link = svg.append('g').selectAll('path').data(linksData).join('path')
+      .attr('fill', 'none')
       .attr('stroke', d => d.value >= 90 ? 'var(--high)' : 'var(--med)')
       .attr('stroke-width', d => 1.5 + d.value / 35)
-      .attr('stroke-opacity', 0.8)
+      .attr('stroke-opacity', 0.85)
       .style('cursor', 'pointer');
 
     link.on('click', (e, d) => openDrawer(d.pair));
@@ -697,7 +784,9 @@ function renderSmallMultiples(){
         .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
         .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-    node.append('circle').attr('r', 16)
+    // Size node circle based on degree
+    node.append('circle')
+      .attr('r', d => 12 + Math.min(10, d.degree * 3))
       .attr('fill', 'var(--surface)')
       .attr('stroke', d => comp.pairs.some(p => (p.a === d.id || p.b === d.id) && p.similarity >= 90) ? 'var(--high)' : 'var(--primary)')
       .attr('stroke-width', 2.5);
@@ -707,7 +796,7 @@ function renderSmallMultiples(){
       .attr('font-size', '10px')
       .attr('fill', 'var(--text)')
       .attr('text-anchor', 'middle')
-      .attr('dy', 28)
+      .attr('dy', d => 24 + Math.min(10, d.degree * 3))
       .text(d => d.id);
 
     node.on('click', (e, d) => {
@@ -715,17 +804,46 @@ function renderSmallMultiples(){
       if (matchPair) openDrawer(matchPair);
     });
 
-    sim.on('tick', () => {
-      link.attr('x1', d => Math.max(20, Math.min(width-20, d.source.x)))
-          .attr('y1', d => Math.max(20, Math.min(height-30, d.source.y)))
-          .attr('x2', d => Math.max(20, Math.min(width-20, d.target.x)))
-          .attr('y2', d => Math.max(20, Math.min(height-30, d.target.y)));
-
-      node.attr('transform', d => {
-        d.x = Math.max(20, Math.min(width-20, d.x));
-        d.y = Math.max(20, Math.min(height-35, d.y));
-        return `translate(${d.x},${d.y})`;
+    // Hover dimming
+    card.addEventListener('mouseenter', () => {
+      document.querySelectorAll('.cluster-card').forEach(c => {
+        if (c !== card) c.style.opacity = '0.4';
       });
+    });
+    card.addEventListener('mouseleave', () => {
+      document.querySelectorAll('.cluster-card').forEach(c => {
+        c.style.opacity = '1';
+      });
+    });
+
+    sim.on('tick', () => {
+      nodesData.forEach(d => {
+        d.x = Math.max(25, Math.min(width - 25, d.x));
+        d.y = Math.max(25, Math.min(height - 35, d.y));
+      });
+
+      // Curved link paths
+      link.attr('d', d => {
+        const dx = d.target.x - d.source.x;
+        const dy = d.target.y - d.source.y;
+        const dr = Math.sqrt(dx * dx + dy * dy) * 1.2;
+        return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+      });
+
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+
+      // Compute convex hull around nodes if >= 3 nodes
+      if (nodesData.length >= 3) {
+        const points = nodesData.map(d => [d.x, d.y]);
+        const hull = d3.polygonHull(points);
+        if (hull) {
+          hullPath.attr('d', `M${hull.join('L')}Z`);
+        }
+      } else if (nodesData.length === 2) {
+        // Enclosing pill shape for 2 nodes
+        const [n1, n2] = nodesData;
+        hullPath.attr('d', `M${n1.x - 15},${n1.y - 15} L${n2.x + 15},${n2.y - 15} L${n2.x + 15},${n2.y + 15} L${n1.x - 15},${n1.y + 15} Z`);
+      }
     });
   });
 }
@@ -741,24 +859,24 @@ function renderMatrixView(){
   if (!state.batch || !state.batch.pairs) return;
 
   const q = (document.getElementById('search').value || '').toLowerCase();
-  const filteredPairs = state.batch.pairs.filter(p =>
-    p.similarity >= state.threshold &&
+  // Include all pairs for the matrix view (or above a baseline 10% similarity) so the heatmap forms a complete grid
+  const allBatchPairs = state.batch.pairs.filter(p =>
     (state.activeType==='all' || p.type===state.activeType) &&
     (p.a.toLowerCase().includes(q) || p.b.toLowerCase().includes(q))
   );
 
-  if (filteredPairs.length === 0) {
+  if (allBatchPairs.length === 0) {
     document.getElementById('matrixEmpty').style.display = 'block';
     return;
   }
 
-  // Collect unique student names
-  const studentSet = new Set(filteredPairs.flatMap(p => [p.a, p.b]));
+  // Collect unique student names from all pairs or batch
+  const studentSet = new Set(allBatchPairs.flatMap(p => [p.a, p.b]));
   const rawStudents = Array.from(studentSet);
 
   // Build matrix lookup
   const pairMap = new Map();
-  filteredPairs.forEach(p => {
+  allBatchPairs.forEach(p => {
     pairMap.set(`${p.a}__${p.b}`, p);
     pairMap.set(`${p.b}__${p.a}`, p);
   });
@@ -837,6 +955,13 @@ function renderMatrixView(){
     .attr('fill', 'var(--text)')
     .text(d => d);
 
+  // Color Scale Generator (Continuous HSL/RGB interpolation)
+  const getMatrixColor = (sim) => {
+    if (sim >= 85) return d3.interpolateRgb('#e6a100', '#ff3b30')((sim - 85) / 15);
+    if (sim >= 50) return d3.interpolateRgb('#3d5a45', '#e6a100')((sim - 50) / 35);
+    return d3.interpolateRgb('#1c231f', '#3d5a45')(sim / 50);
+  };
+
   // Render Grid Cells
   const cellsGroup = g.append('g');
   for (let i = 0; i < n; i++) {
@@ -847,16 +972,16 @@ function renderMatrixView(){
       const cell = cellsGroup.append('rect')
         .attr('x', j * cellSize)
         .attr('y', i * cellSize)
-        .attr('width', cellSize - 2)
-        .attr('height', cellSize - 2)
+        .attr('width', cellSize - 3)
+        .attr('height', cellSize - 3)
         .attr('rx', 4);
 
       if (i === j) {
         // Diagonal self-cell
-        cell.attr('fill', 'var(--line)');
+        cell.attr('fill', 'var(--surface-2)').attr('opacity', 0.4);
         cell.on('mouseenter', () => {
-          rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
-          colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
+          rowHighlight.attr('y', i * cellSize).attr('opacity', 0.4);
+          colHighlight.attr('x', j * cellSize).attr('opacity', 0.4);
         }).on('mouseleave', () => {
           rowHighlight.attr('opacity', 0);
           colHighlight.attr('opacity', 0);
@@ -865,20 +990,28 @@ function renderMatrixView(){
         const pair = pairMap.get(`${s1}__${s2}`);
         if (pair) {
           const sim = pair.similarity;
-          const color = sim >= 90 ? 'var(--high)' : 'var(--med)';
-          // Opacity ramp from .4 to 1
-          const opacity = 0.4 + (sim / 100) * 0.6;
+          const isOverThreshold = sim >= state.threshold;
+          const cellColor = getMatrixColor(sim);
 
-          cell.attr('fill', color)
-            .attr('fill-opacity', opacity)
+          cell.attr('fill', cellColor)
+            .attr('fill-opacity', isOverThreshold ? 0.9 : 0.35 + (sim / 100) * 0.45)
+            .attr('stroke', isOverThreshold ? (sim >= 90 ? '#ff3b30' : '#e6a100') : 'none')
+            .attr('stroke-width', isOverThreshold ? 1.5 : 0)
             .style('cursor', 'pointer');
 
           cell.on('mouseenter', (e) => {
               rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
               colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
               
+              // Highlight row & col text
+              svg.selectAll('.rowLabel').filter((d, idx) => idx === i).attr('fill', 'var(--primary)').attr('font-weight', '700');
+              svg.selectAll('.colLabel').filter((d, idx) => idx === j).attr('fill', 'var(--primary)').attr('font-weight', '700');
+
               tooltip.style.opacity = 1;
-              tooltip.innerHTML = `<b>${s1} ↔ ${s2}</b><br>Similarity: <b>${sim}%</b> (${pair.type})`;
+              tooltip.innerHTML = `<div style="font-weight: 700; color: var(--text);">${s1} ↔ ${s2}</div>
+                <div style="margin-top: 4px; font-size: 12px; color: ${sim >= 90 ? 'var(--high)' : 'var(--med)'}; font-weight: 600;">
+                  Similarity: ${sim}% (${pair.type})
+                </div>`;
             })
             .on('mousemove', (e) => {
               const rect = document.getElementById('matrixWrap').getBoundingClientRect();
@@ -889,13 +1022,15 @@ function renderMatrixView(){
               tooltip.style.opacity = 0; 
               rowHighlight.attr('opacity', 0);
               colHighlight.attr('opacity', 0);
+              svg.selectAll('.rowLabel').attr('fill', 'var(--text)').attr('font-weight', '400');
+              svg.selectAll('.colLabel').attr('fill', 'var(--text)').attr('font-weight', '400');
             })
             .on('click', () => openDrawer(pair));
         } else {
-          cell.attr('fill', 'var(--surface)').attr('stroke', 'var(--line)').attr('stroke-width', 1).attr('fill-opacity', 0.2);
+          cell.attr('fill', 'var(--surface)').attr('stroke', 'var(--line)').attr('stroke-width', 0.5).attr('fill-opacity', 0.15);
           cell.on('mouseenter', () => {
-            rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
-            colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
+            rowHighlight.attr('y', i * cellSize).attr('opacity', 0.4);
+            colHighlight.attr('x', j * cellSize).attr('opacity', 0.4);
           }).on('mouseleave', () => {
             rowHighlight.attr('opacity', 0);
             colHighlight.attr('opacity', 0);
@@ -1011,20 +1146,188 @@ document.querySelectorAll('.panel-toggle button').forEach(b => b.addEventListene
 }));
 
 const drawer = document.getElementById('drawer');
-function openDrawer(p){
+let activeMatchIdx = 0;
+let currentPairMatches = [];
+
+async function openDrawer(p){
   document.getElementById('drawerTitle').textContent = p.a + '  vs.  ' + p.b;
   document.getElementById('drawerSub').textContent = p.type + ' · ' + p.similarity + '% similarity' + (p.crossBatch ? ' · cross-batch' : '');
   document.getElementById('drawerNote').textContent = p.similarity >= 90
     ? 'High confidence similarity match. Recommend academic review before resubmission.'
     : 'Moderate similarity. May reflect template code or common assignment structures.';
-  const mm = document.getElementById('drawerMatches');
-  mm.innerHTML = (p.matches && p.matches.length)
-    ? p.matches.map(m => `<div class="matchrow">Line ${m.aLines ?? '?'} in ${p.a} ↔ line ${m.bLines ?? '?'} in ${p.b}, ${m.length ?? '?'} tokens matched</div>`).join('')
-    : '<div class="matchrow">No line-level detail available for this pair.</div>';
+
   document.getElementById('btnConfirm').onclick = () => { setStatus(p.id,'Confirmed'); closeDrawer(); renderActivePanel(); };
   document.getElementById('btnClear').onclick = () => { setStatus(p.id,'Cleared'); closeDrawer(); renderActivePanel(); };
-  drawer.classList.add('open'); document.getElementById('drawerScrim').classList.add('open');
+
+  drawer.classList.add('open'); 
+  document.getElementById('drawerScrim').classList.add('open');
+
+  document.getElementById('diffStudentA').textContent = p.a;
+  document.getElementById('diffStudentB').textContent = p.b;
+  document.getElementById('diffContentA').textContent = 'Loading files...';
+  document.getElementById('diffContentB').textContent = 'Loading files...';
+  document.getElementById('minimapA').innerHTML = '';
+  document.getElementById('minimapB').innerHTML = '';
+
+  try {
+    const res = await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}/pairs/${p.id}/files`);
+    if (!res.ok) throw new Error("Could not load files");
+    const data = await res.json();
+
+    document.getElementById('diffStudentA').textContent = data.aStudent;
+    document.getElementById('diffStudentB').textContent = data.bStudent;
+
+    const selA = document.getElementById('diffSelectA');
+    const selB = document.getElementById('diffSelectB');
+    selA.innerHTML = '';
+    selB.innerHTML = '';
+
+    const aFiles = data.aFiles || [];
+    const bFiles = data.bFiles || [];
+
+    if (aFiles.length > 1) {
+      selA.innerHTML = `<option value="ALL">All Files (${aFiles.length} combined)</option>` +
+        aFiles.map((f, i) => `<option value="${i}">${f.path}</option>`).join('');
+    } else if (aFiles.length === 1) {
+      selA.innerHTML = `<option value="0">${aFiles[0].path}</option>`;
+    } else {
+      selA.innerHTML = `<option value="NONE">${data.aFileName || 'No file'}</option>`;
+    }
+
+    if (bFiles.length > 1) {
+      selB.innerHTML = `<option value="ALL">All Files (${bFiles.length} combined)</option>` +
+        bFiles.map((f, i) => `<option value="${i}">${f.path}</option>`).join('');
+    } else if (bFiles.length === 1) {
+      selB.innerHTML = `<option value="0">${bFiles[0].path}</option>`;
+    } else {
+      selB.innerHTML = `<option value="NONE">${data.bFileName || 'No file'}</option>`;
+    }
+
+    currentPairMatches = data.matches || p.matches || [];
+    activeMatchIdx = 0;
+
+    const renderPaneA = () => {
+      const val = selA.value;
+      const content = (val === 'ALL' || val === 'NONE') ? data.aContent : (aFiles[+val]?.content || data.aContent);
+      renderDiffPane('A', content, currentPairMatches, 'aStartLine', 'aEndLine');
+    };
+
+    const renderPaneB = () => {
+      const val = selB.value;
+      const content = (val === 'ALL' || val === 'NONE') ? data.bContent : (bFiles[+val]?.content || data.bContent);
+      renderDiffPane('B', content, currentPairMatches, 'bStartLine', 'bEndLine');
+    };
+
+    selA.onchange = renderPaneA;
+    selB.onchange = renderPaneB;
+
+    renderPaneA();
+    renderPaneB();
+
+    updateMatchNav();
+  } catch (e) {
+    document.getElementById('diffContentA').textContent = 'No file content available for this pair.';
+    document.getElementById('diffContentB').textContent = 'No file content available for this pair.';
+    document.getElementById('matchLabel').textContent = '0 / 0 matches';
+  }
 }
+
+function renderDiffPane(side, content, matches, startKey, endKey) {
+  const pre = document.getElementById(`diffContent${side}`);
+  const minimap = document.getElementById(`minimap${side}`);
+  pre.innerHTML = '';
+  minimap.innerHTML = '';
+
+  if (!content) return;
+
+  const lines = content.split('\n');
+  const totalLines = lines.length;
+
+  lines.forEach((lineText, idx) => {
+    const lineNum = idx + 1;
+    const span = document.createElement('span');
+    span.className = 'line';
+    span.id = `${side.toLowerCase()}-line-${lineNum}`;
+
+    let isMatched = false;
+    let isActiveMatch = false;
+
+    matches.forEach((m, mIdx) => {
+      const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
+      const len = m.length || 1;
+      const e = m[endKey] || (s + len - 1);
+
+      if (lineNum >= s && lineNum <= e) {
+        isMatched = true;
+        if (mIdx === activeMatchIdx) isActiveMatch = true;
+      }
+    });
+
+    if (isActiveMatch) span.classList.add('match-active');
+    else if (isMatched) span.classList.add('match-other');
+
+    span.textContent = lineText;
+    pre.appendChild(span);
+  });
+
+  // Render Minimap
+  if (totalLines > 0) {
+    matches.forEach((m, mIdx) => {
+      const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
+      if (!s) return;
+      const topPct = ((s - 1) / totalLines) * 100;
+      const tick = document.createElement('div');
+      tick.className = 'diff-minimap-tick';
+      tick.style.top = `${topPct}%`;
+      if (mIdx === activeMatchIdx) tick.style.background = 'var(--high)';
+      else tick.style.background = 'var(--med)';
+      minimap.appendChild(tick);
+    });
+  }
+}
+
+function updateMatchNav() {
+  const nav = document.getElementById('drawerNav');
+  if (!currentPairMatches || currentPairMatches.length === 0) {
+    nav.style.display = 'none';
+    return;
+  }
+  nav.style.display = 'flex';
+  document.getElementById('matchLabel').textContent = `Match ${activeMatchIdx + 1} / ${currentPairMatches.length}`;
+
+  // Highlight active lines across panes
+  highlightActiveMatch();
+}
+
+function highlightActiveMatch() {
+  if (!currentPairMatches[activeMatchIdx]) return;
+  const m = currentPairMatches[activeMatchIdx];
+
+  const aLineNum = m.aStartLine || m.aLines;
+  const bLineNum = m.bStartLine || m.bLines;
+
+  if (aLineNum) {
+    const elA = document.getElementById(`a-line-${aLineNum}`);
+    if (elA) elA.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (bLineNum) {
+    const elB = document.getElementById(`b-line-${bLineNum}`);
+    if (elB) elB.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+document.getElementById('matchPrev').addEventListener('click', () => {
+  if (currentPairMatches.length === 0) return;
+  activeMatchIdx = (activeMatchIdx - 1 + currentPairMatches.length) % currentPairMatches.length;
+  updateMatchNav();
+});
+
+document.getElementById('matchNext').addEventListener('click', () => {
+  if (currentPairMatches.length === 0) return;
+  activeMatchIdx = (activeMatchIdx + 1) % currentPairMatches.length;
+  updateMatchNav();
+});
+
 function closeDrawer(){ drawer.classList.remove('open'); document.getElementById('drawerScrim').classList.remove('open'); }
 document.getElementById('drawerClose').addEventListener('click', closeDrawer);
 document.getElementById('drawerScrim').addEventListener('click', closeDrawer);

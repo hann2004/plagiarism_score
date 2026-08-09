@@ -29,10 +29,12 @@ from fetcher import fetch_submissions
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 WORK_DIR = BASE_DIR / "work"
+FILES_DIR = DATA_DIR / "files"
 JPLAG_JAR = BASE_DIR / "jplag" / "jplag.jar"
 
 DATA_DIR.mkdir(exist_ok=True)
 WORK_DIR.mkdir(exist_ok=True)
+FILES_DIR.mkdir(exist_ok=True)
 
 storage = Storage(DATA_DIR)
 
@@ -104,6 +106,136 @@ def set_status(cohort_id: str, batch_id: str, pair_id: str = Form(...), status: 
     return {"ok": True}
 
 
+def _persist_student_files(submissions_dir: Path, cohort_id: str, batch_id: str):
+    """Copy student source files to a permanent location so the diff view can read them later."""
+    dest = FILES_DIR / f"{cohort_id}__{batch_id}"
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    for student_dir in submissions_dir.iterdir():
+        if student_dir.is_dir():
+            student_dest = dest / student_dir.name
+            shutil.copytree(student_dir, student_dest, dirs_exist_ok=True)
+
+
+def _read_student_files(cohort_id: str, batch_id: str, student_name: str) -> dict:
+    """Reads ALL source files submitted by a student, returning a files list and combined view."""
+    batch_dir = FILES_DIR / f"{cohort_id}__{batch_id}"
+    if not batch_dir.exists():
+        return {"mainName": None, "content": None, "files": []}
+
+    student_dir = batch_dir / student_name
+    if not student_dir.exists():
+        # Flexible folder match (e.g. "student 1" vs "student_1_abebe_kebede")
+        target_norm = student_name.lower().replace("_", " ").strip()
+        matched = None
+        for folder in batch_dir.iterdir():
+            if folder.is_dir():
+                folder_norm = folder.name.lower().replace("_", " ").strip()
+                if folder_norm == target_norm or folder_norm in target_norm or target_norm in folder_norm:
+                    matched = folder
+                    break
+        if matched:
+            student_dir = matched
+        else:
+            return {"mainName": None, "content": None, "files": []}
+
+    found_files = []
+    for f in sorted(student_dir.rglob("*")):
+        if f.is_file() and not f.name.startswith("."):
+            try:
+                rel_path = str(f.relative_to(student_dir))
+                text = f.read_text(errors="replace")
+                found_files.append({"path": rel_path, "content": text})
+            except Exception:
+                pass
+
+    if not found_files:
+        return {"mainName": None, "content": None, "files": []}
+
+    if len(found_files) == 1:
+        return {
+            "mainName": found_files[0]["path"],
+            "content": found_files[0]["content"],
+            "files": found_files
+        }
+
+    combined_blocks = []
+    for item in found_files:
+        combined_blocks.append(f"// ==========================================\n// File: {item['path']}\n// ==========================================\n\n{item['content']}")
+    
+    combined_text = "\n\n".join(combined_blocks)
+    return {
+        "mainName": f"All Submissions ({len(found_files)} files)",
+        "content": combined_text,
+        "files": found_files
+    }
+
+
+@app.get("/api/cohorts/{cohort_id}/batches/{batch_id}/pairs/{pair_id}/files")
+def get_pair_files(cohort_id: str, batch_id: str, pair_id: str):
+    batch = storage.get_batch(cohort_id, batch_id)
+    if not batch:
+        raise HTTPException(404, "Batch not found.")
+    pair = None
+    for p in batch.get("pairs", []):
+        if p["id"] == pair_id:
+            pair = p
+            break
+    if not pair:
+        raise HTTPException(404, "Pair not found.")
+    a_data = _read_student_files(cohort_id, batch_id, pair["a"])
+    b_data = _read_student_files(cohort_id, batch_id, pair["b"])
+    return {
+        "aStudent": pair["a"],
+        "bStudent": pair["b"],
+        "aFileName": a_data["mainName"] or "(no file)",
+        "aContent": a_data["content"] or "File not available — run may have been before file persistence was added.",
+        "aFiles": a_data["files"],
+        "bFileName": b_data["mainName"] or "(no file)",
+        "bContent": b_data["content"] or "File not available — run may have been before file persistence was added.",
+        "bFiles": b_data["files"],
+        "matches": pair.get("matches", []),
+    }
+
+
+def clean_submissions_directory(submissions_dir: Path, mode: str):
+    """
+    Cleans up submissions directory based on mode:
+    - ALWAYS deletes all README*, license*, changelog*, .md, .markdown, .rst files.
+    - If mode == 'code': Also deletes non-code text/doc/pdf files so JPlag compares source code only.
+    - If mode == 'report': Also deletes all programming files, configs, scripts, leaving only main reports.
+    """
+    for file_path in list(submissions_dir.rglob("*")):
+        if not file_path.is_file():
+            continue
+        name_lower = file_path.name.lower()
+        suffix = file_path.suffix.lower()
+
+        # ALWAYS strip READMEs, licenses, changelogs, and markdown documentation in ALL modes
+        if name_lower.startswith("readme") or name_lower.startswith("license") or name_lower.startswith("changelog") or suffix in [".md", ".markdown", ".rst"]:
+            try:
+                file_path.unlink()
+            except Exception:
+                pass
+            continue
+
+        if mode == "code":
+            # In code mode, remove text/doc/pdf files that aren't source code
+            if suffix in [".txt", ".docx", ".doc", ".pdf", ".rtf", ".odt"]:
+                try:
+                    file_path.unlink()
+                except Exception:
+                    pass
+        elif mode == "report":
+            # In report mode, remove programming source code and dev/config files
+            if suffix in [".py", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".go", ".rs", ".php", ".pyc", ".json", ".yml", ".yaml", ".xml", ".sh", ".bash", ".sql"]:
+                try:
+                    file_path.unlink()
+                except Exception:
+                    pass
+
+
 @app.post("/api/run")
 async def run_comparison(
     cohort_id: str = Form(...),
@@ -152,6 +284,7 @@ async def run_comparison(
 
     # Convert DOCX reports if present
     convert_docx_to_txt(submissions_dir)
+    clean_submissions_directory(submissions_dir, mode)
 
     if mode == "report":
         jplag_language = "text"
@@ -172,6 +305,7 @@ async def run_comparison(
         mode=mode, student_folders=student_folders,
         comparisons=result["comparisons"],
     )
+    _persist_student_files(submissions_dir, cohort_id, batch_id)
     return {"ok": True, "studentCount": saved["studentCount"], "pairCount": len(saved["pairs"])}
 
 
@@ -203,6 +337,7 @@ async def run_fetched_comparison(
 
     # Convert DOCX reports if present
     convert_docx_to_txt(submissions_dir)
+    clean_submissions_directory(submissions_dir, mode)
 
     if mode == "report":
         jplag_language = "text"
@@ -223,6 +358,7 @@ async def run_fetched_comparison(
         mode=mode, student_folders=student_folders,
         comparisons=result["comparisons"],
     )
+    _persist_student_files(submissions_dir, cohort_id, batch_id)
     
     return {
         "ok": True, 

@@ -11,7 +11,6 @@ EXTENSIONS = {
     ".cs": "csharp",
     ".js": "javascript",
     ".ts": "typescript",
-    ".txt": "text"
 }
 
 def detect_language(folder: Path) -> str:

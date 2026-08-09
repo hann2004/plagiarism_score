@@ -68,11 +68,9 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
 
 def _load_matches(extract_dir: Path, a: str, b: str) -> list:
     """
-    Pulls a few real matched fragments out of JPlag's per-pair comparison
-    file, if present, so the drawer can show actual matched lines instead
-    of just a score. Falls back to an empty list if the format doesn't
-    match what we expect (JPlag's internal JSON shape can vary a bit by
-    version, so this is deliberately defensive).
+    Pulls matched fragments out of JPlag's per-pair comparison file.
+    Returns full line ranges (start+end for both files) so the frontend
+    can render a proper side-by-side diff view with highlights.
     """
     candidates = [
         extract_dir / "comparisons" / f"{a}-{b}.json",
@@ -83,15 +81,28 @@ def _load_matches(extract_dir: Path, a: str, b: str) -> list:
             try:
                 with open(path) as f:
                     data = json.load(f)
-                matches = data.get("matches", [])[:3]
-                return [
-                    {
-                        "aLines": m.get("startInFirst", {}).get("line"),
-                        "bLines": m.get("startInSecond", {}).get("line"),
-                        "length": m.get("lengthOfFirst"),
-                    }
-                    for m in matches
-                ]
+                matches = data.get("matches", [])[:20]
+                result = []
+                for m in matches:
+                    a_start = m.get("startInFirst", {}).get("line")
+                    b_start = m.get("startInSecond", {}).get("line")
+                    a_length = m.get("lengthOfFirst", 0)
+                    b_length = m.get("lengthOfSecond", a_length)
+                    a_file = m.get("fileInFirst") or m.get("firstFileName") or m.get("firstFile")
+                    b_file = m.get("fileInSecond") or m.get("secondFileName") or m.get("secondFile")
+                    result.append({
+                        "aFile": a_file,
+                        "bFile": b_file,
+                        "aStartLine": a_start,
+                        "aEndLine": (a_start + a_length - 1) if a_start and a_length else a_start,
+                        "bStartLine": b_start,
+                        "bEndLine": (b_start + b_length - 1) if b_start and b_length else b_start,
+                        "aLines": a_start,
+                        "bLines": b_start,
+                        "length": a_length,
+                    })
+                return result
             except Exception:
                 return []
     return []
+
