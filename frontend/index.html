@@ -284,7 +284,7 @@
 
 <div class="scrim" id="uploadScrim"></div>
 <div class="modal" id="uploadModal">
-  <h3>Run a comparison</h3>
+  <h3>Run a comparison from ZIP</h3>
   <div class="field"><label>Cohort Name</label><input type="text" id="fCohortLabel" placeholder="KAIM Batch 7"></div>
   <div class="field"><label>Week / Batch Label</label><input type="text" id="fBatchLabel" placeholder="Week 5"></div>
   <div class="field"><label>Submission Mode</label>
@@ -302,6 +302,22 @@
   <div class="modal-actions">
     <button class="btn" id="cancelUpload">Cancel</button>
     <button class="btn btn-primary" id="submitUpload">Run Analysis</button>
+  </div>
+</div>
+
+<div class="modal" id="fetchModal">
+  <h3 id="fetchTitle">Fetch & Compare</h3>
+  <p style="color:var(--muted); font-size:13.5px; margin-bottom:20px;">This will automatically fetch all submitted GitHub or Google Doc links and run the comparison.</p>
+  <div class="field"><label>Submission Mode</label>
+    <select id="fetchMode">
+      <option value="code">Code (Fetches GitHub Links)</option>
+      <option value="report">Reports (Fetches Google Docs)</option>
+    </select>
+  </div>
+  <div class="run-status" id="fetchStatus"></div>
+  <div class="modal-actions">
+    <button class="btn" id="cancelFetch">Cancel</button>
+    <button class="btn btn-primary" id="submitFetch">Fetch and Run Analysis</button>
   </div>
 </div>
 
@@ -460,12 +476,25 @@ function renderBatchList(){
     const b = c.batches[bid];
     const row = document.createElement('div');
     row.className = 'batch-row';
-    row.innerHTML = `<div><div class="name">${b.label}</div><div class="meta">${b.studentCount} students compared</div></div><div class="flag">${b.flaggedCount} flagged</div>`;
-    row.addEventListener('click', async () => {
-      state.batchId = bid; state.batchLabel = b.label;
-      renderCrumbs(); setView('viewResults');
-      await loadBatch();
-    });
+    
+    if (b.studentCount === 0 && b.collectedCount > 0) {
+      // Un-analyzed collected submissions
+      row.innerHTML = `<div><div class="name">${b.label}</div><div class="meta">${b.collectedCount} submissions collected (Not analyzed)</div></div><div class="flag" style="background:var(--surface-2);color:var(--text);border:1px solid var(--line);">Ready to Fetch</div>`;
+      row.addEventListener('click', () => {
+        document.getElementById('fetchModal').classList.add('open');
+        document.getElementById('uploadScrim').classList.add('open');
+        document.getElementById('fetchTitle').textContent = `Fetch & Compare: ${b.label}`;
+        state.batchId = bid; state.batchLabel = b.label;
+      });
+    } else {
+      // Analyzed batch
+      row.innerHTML = `<div><div class="name">${b.label}</div><div class="meta">${b.studentCount} students compared</div></div><div class="flag">${b.flaggedCount} flagged</div>`;
+      row.addEventListener('click', async () => {
+        state.batchId = bid; state.batchLabel = b.label;
+        renderCrumbs(); setView('viewResults');
+        await loadBatch();
+      });
+    }
     list.appendChild(row);
   });
 }
@@ -768,7 +797,7 @@ function renderMatrixView(){
 
   const n = orderedStudents.length;
   const cellSize = Math.max(28, Math.min(48, Math.floor(700 / n)));
-  const margin = { top: 120, left: 140, right: 30, bottom: 30 };
+  const margin = { top: 120, left: 140, right: 120, bottom: 30 };
   const width = margin.left + n * cellSize + margin.right;
   const height = margin.top + n * cellSize + margin.bottom;
 
@@ -778,6 +807,10 @@ function renderMatrixView(){
 
   // Matrix group
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  // Hover Highlight Backgrounds
+  const rowHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', n * cellSize).attr('height', cellSize).attr('pointer-events', 'none');
+  const colHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', cellSize).attr('height', n * cellSize).attr('pointer-events', 'none');
 
   // Column Labels (Top)
   g.selectAll('.colLabel')
@@ -805,12 +838,13 @@ function renderMatrixView(){
     .text(d => d);
 
   // Render Grid Cells
+  const cellsGroup = g.append('g');
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
       const s1 = orderedStudents[i];
       const s2 = orderedStudents[j];
 
-      const cell = g.append('rect')
+      const cell = cellsGroup.append('rect')
         .attr('x', j * cellSize)
         .attr('y', i * cellSize)
         .attr('width', cellSize - 2)
@@ -819,19 +853,30 @@ function renderMatrixView(){
 
       if (i === j) {
         // Diagonal self-cell
-        cell.attr('fill', 'var(--surface-2)');
+        cell.attr('fill', 'var(--line)');
+        cell.on('mouseenter', () => {
+          rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
+          colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
+        }).on('mouseleave', () => {
+          rowHighlight.attr('opacity', 0);
+          colHighlight.attr('opacity', 0);
+        });
       } else {
         const pair = pairMap.get(`${s1}__${s2}`);
         if (pair) {
           const sim = pair.similarity;
           const color = sim >= 90 ? 'var(--high)' : 'var(--med)';
-          const opacity = Math.max(0.3, sim / 100);
+          // Opacity ramp from .4 to 1
+          const opacity = 0.4 + (sim / 100) * 0.6;
 
           cell.attr('fill', color)
             .attr('fill-opacity', opacity)
             .style('cursor', 'pointer');
 
           cell.on('mouseenter', (e) => {
+              rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
+              colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
+              
               tooltip.style.opacity = 1;
               tooltip.innerHTML = `<b>${s1} ↔ ${s2}</b><br>Similarity: <b>${sim}%</b> (${pair.type})`;
             })
@@ -840,14 +885,51 @@ function renderMatrixView(){
               tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
               tooltip.style.top = (e.clientY - rect.top + 10) + 'px';
             })
-            .on('mouseleave', () => { tooltip.style.opacity = 0; })
+            .on('mouseleave', () => { 
+              tooltip.style.opacity = 0; 
+              rowHighlight.attr('opacity', 0);
+              colHighlight.attr('opacity', 0);
+            })
             .on('click', () => openDrawer(pair));
         } else {
-          cell.attr('fill', 'var(--surface-2)').attr('fill-opacity', 0.4);
+          cell.attr('fill', 'var(--surface)').attr('stroke', 'var(--line)').attr('stroke-width', 1).attr('fill-opacity', 0.2);
+          cell.on('mouseenter', () => {
+            rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
+            colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
+          }).on('mouseleave', () => {
+            rowHighlight.attr('opacity', 0);
+            colHighlight.attr('opacity', 0);
+          });
         }
       }
     }
   }
+
+  // Marginal Bar Chart
+  const counts = orderedStudents.map(s => {
+    let count = 0;
+    for(const other of orderedStudents) if(pairMap.has(`${s}__${other}`)) count++;
+    return count;
+  });
+  const maxFlags = Math.max(...counts, 1);
+  const barScale = d3.scaleLinear().domain([0, maxFlags]).range([0, 80]);
+  
+  const barGroup = g.append('g').attr('transform', `translate(${n * cellSize + 15}, 0)`);
+  barGroup.append('text').attr('x', 0).attr('y', -10).attr('font-size', '11px').attr('fill', 'var(--muted)').text('Flags');
+  
+  orderedStudents.forEach((s, i) => {
+    const count = counts[i];
+    barGroup.append('rect')
+      .attr('x', 0).attr('y', i * cellSize + 2)
+      .attr('width', barScale(count)).attr('height', cellSize - 6)
+      .attr('fill', count > 0 ? 'var(--primary)' : 'var(--surface-2)')
+      .attr('rx', 2);
+      
+    barGroup.append('text')
+      .attr('x', barScale(count) + 5).attr('y', i * cellSize + cellSize/2 + 4)
+      .attr('font-size', '11px').attr('font-family', 'IBM Plex Mono, monospace').attr('fill', 'var(--muted)')
+      .text(count > 0 ? count : '');
+  });
 }
 
 function renderTable(){
@@ -948,13 +1030,19 @@ document.getElementById('drawerClose').addEventListener('click', closeDrawer);
 document.getElementById('drawerScrim').addEventListener('click', closeDrawer);
 
 const uploadModal = document.getElementById('uploadModal');
+const fetchModal = document.getElementById('fetchModal');
 const uploadScrim = document.getElementById('uploadScrim');
 let pickedFile = null;
 
 document.getElementById('openUpload').addEventListener('click', () => { uploadModal.classList.add('open'); uploadScrim.classList.add('open'); });
 document.getElementById('cancelUpload').addEventListener('click', closeUpload);
+document.getElementById('cancelFetch').addEventListener('click', closeUpload);
 uploadScrim.addEventListener('click', closeUpload);
-function closeUpload(){ uploadModal.classList.remove('open'); uploadScrim.classList.remove('open'); }
+function closeUpload(){ 
+  uploadModal.classList.remove('open'); 
+  fetchModal.classList.remove('open');
+  uploadScrim.classList.remove('open'); 
+}
 
 const dz = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
@@ -964,6 +1052,42 @@ dz.addEventListener('dragleave', () => dz.classList.remove('hover'));
 dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('hover'); pickedFile = e.dataTransfer.files[0]; updateDzLabel(); });
 fileInput.addEventListener('change', () => { pickedFile = fileInput.files[0]; updateDzLabel(); });
 function updateDzLabel(){ document.getElementById('dzLabel').textContent = pickedFile ? pickedFile.name : 'Drop a .zip file here or click to browse'; }
+
+document.getElementById('submitFetch').addEventListener('click', async () => {
+  const mode = document.getElementById('fetchMode').value;
+  const status = document.getElementById('fetchStatus');
+  
+  const fd = new FormData();
+  fd.append('cohort_id', state.cohortId);
+  fd.append('cohort_label', state.cohortLabel);
+  fd.append('batch_id', state.batchId);
+  fd.append('batch_label', state.batchLabel);
+  fd.append('mode', mode);
+
+  status.textContent = 'Fetching links and running similarity analysis, this may take a moment…';
+  document.getElementById('submitFetch').disabled = true;
+  try{
+    const res = await fetch(API + '/run-fetched', { method:'POST', body: fd });
+    if(!res.ok){ const err = await res.json(); status.textContent = err.detail || 'Something went wrong.'; document.getElementById('submitFetch').disabled = false; return; }
+    
+    const data = await res.json();
+    if(data.fetchErrors && data.fetchErrors.length > 0) {
+      status.innerHTML = `Analysis complete, but with fetch errors:<br><span style="color:var(--high); font-size:11px;">${data.fetchErrors.join('<br>')}</span>`;
+    } else {
+      status.textContent = 'Analysis complete.';
+    }
+    
+    setTimeout(async () => {
+      closeUpload();
+      renderCrumbs(); setView('viewResults');
+      await loadBatch();
+      document.getElementById('submitFetch').disabled = false;
+    }, 2500);
+  } catch(e){
+    status.textContent = 'Could not connect to backend server on localhost:8000.';
+    document.getElementById('submitFetch').disabled = false;
+  }
+});
 
 document.getElementById('submitUpload').addEventListener('click', async () => {
   const cohortLabel = document.getElementById('fCohortLabel').value.trim();

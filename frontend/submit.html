@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submit Assignment - Integrity Observatory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F4F1EA;
+    --surface: #FFFFFF;
+    --line: #E4DFD2;
+    --text: #2B2823;
+    --muted: #6E7A6B;
+    --primary: #3D5A45;
+    --primary-hover: #2C4332;
+    --focus: rgba(61, 90, 69, 0.2);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 40px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .header h1 {
+    margin: 0 0 8px;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14.5px;
+  }
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .field input[type=text], .field input[type=url] {
+    width: 100%;
+    background: #FAFAFA;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 14.5px;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    transition: all 0.2s;
+  }
+  .field input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--focus);
+    background: #FFFFFF;
+  }
+  .field .hint {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 6px;
+    display: block;
+  }
+  .btn {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    border: none;
+    background: var(--primary);
+    color: #FFFFFF;
+    transition: all 0.15s ease;
+    margin-top: 10px;
+  }
+  .btn:hover { background: var(--primary-hover); }
+  .btn:disabled { opacity: 0.7; cursor: not-allowed; }
+  
+  .success-box {
+    display: none;
+    text-align: center;
+    padding: 20px 0;
+  }
+  .success-box h2 {
+    color: var(--primary);
+    font-size: 20px;
+    margin: 0 0 10px;
+  }
+  .success-box p {
+    color: var(--muted);
+    font-size: 14.5px;
+    margin: 0;
+  }
+  
+  .error-msg {
+    color: #B3452F;
+    font-size: 13px;
+    margin-top: 10px;
+    text-align: center;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<div class="card" id="formCard">
+  <div class="header">
+    <h1>Submit Assignment</h1>
+    <p id="cohortBatchDisplay">Loading...</p>
+  </div>
+  
+  <form id="submitForm">
+    <div class="field">
+      <label>Full Name</label>
+      <input type="text" id="fName" placeholder="e.g. Jane Doe" required>
+    </div>
+    
+    <div class="field">
+      <label>GitHub Repository Link (Code)</label>
+      <input type="url" id="fGithub" placeholder="https://github.com/username/repo">
+      <span class="hint">Must be a public repository.</span>
+    </div>
+    
+    <div class="field">
+      <label>Google Drive / Doc Link (Report)</label>
+      <input type="url" id="fDoc" placeholder="https://docs.google.com/...">
+      <span class="hint">Ensure sharing is set to "Anyone with the link can view".</span>
+    </div>
+    
+    <button type="submit" class="btn" id="btnSubmit">Submit Work</button>
+    <div class="error-msg" id="errorMsg"></div>
+  </form>
+</div>
+
+<div class="card success-box" id="successCard">
+  <h2>Submission Received!</h2>
+  <p>Your work has been securely logged. If you need to update your links, simply fill out the form again with the exact same name.</p>
+</div>
+
+<script>
+  const urlParams = new URLSearchParams(window.location.search);
+  const cohortId = urlParams.get('cohort') || 'default_cohort';
+  const batchId = urlParams.get('batch') || 'default_batch';
+  
+  document.getElementById('cohortBatchDisplay').textContent = 
+    `Cohort: ${cohortId.replace(/_/g, ' ')} | Batch: ${batchId.replace(/_/g, ' ')}`;
+
+  document.getElementById('submitForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmit');
+    const err = document.getElementById('errorMsg');
+    
+    const name = document.getElementById('fName').value.trim();
+    const github = document.getElementById('fGithub').value.trim();
+    const doc = document.getElementById('fDoc').value.trim();
+    
+    if (!github && !doc) {
+      err.textContent = "Please provide at least one link (GitHub or Google Doc).";
+      return;
+    }
+    
+    btn.disabled = true;
+    btn.textContent = "Submitting...";
+    err.textContent = "";
+    
+    const fd = new FormData();
+    fd.append('student_name', name);
+    fd.append('github_link', github);
+    fd.append('doc_link', doc);
+    
+    try {
+      const res = await fetch(`/api/cohorts/${cohortId}/batches/${batchId}/submissions`, {
+        method: 'POST',
+        body: fd
+      });
+      
+      if (res.ok) {
+        document.getElementById('formCard').style.display = 'none';
+        document.getElementById('successCard').style.display = 'block';
+      } else {
+        const data = await res.json();
+        err.textContent = data.detail || "Submission failed. Please try again.";
+      }
+    } catch (error) {
+      err.textContent = "Network error. Could not connect to server.";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Submit Work";
+    }
+  });
+</script>
+</body>
+</html>

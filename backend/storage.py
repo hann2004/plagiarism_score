@@ -26,6 +26,9 @@ class Storage:
     def _batch_path(self, cohort_id: str, batch_id: str) -> Path:
         return self.data_dir / f"{cohort_id}__{batch_id}.json"
 
+    def _submissions_path(self, cohort_id: str, batch_id: str) -> Path:
+        return self.data_dir / f"{cohort_id}__{batch_id}__submissions.json"
+
     def list_cohorts(self) -> dict:
         return self._read_index()["cohorts"]
 
@@ -50,6 +53,45 @@ class Storage:
             with open(self._batch_path(cohort_id, batch_id), "w") as f:
                 json.dump(batch, f, indent=2)
         return found
+
+    def get_submissions(self, cohort_id: str, batch_id: str) -> list:
+        path = self._submissions_path(cohort_id, batch_id)
+        if not path.exists():
+            return []
+        with open(path) as f:
+            return json.load(f)
+
+    def add_submission(self, cohort_id: str, batch_id: str, student_name: str, github_link: str, doc_link: str):
+        subs = self.get_submissions(cohort_id, batch_id)
+        # Upsert by student_name
+        found = False
+        for s in subs:
+            if s["student_name"].lower() == student_name.lower():
+                s["github_link"] = github_link
+                s["doc_link"] = doc_link
+                found = True
+                break
+        if not found:
+            subs.append({
+                "student_name": student_name,
+                "github_link": github_link,
+                "doc_link": doc_link
+            })
+        
+        with open(self._submissions_path(cohort_id, batch_id), "w") as f:
+            json.dump(subs, f, indent=2)
+
+        # Update index to reflect collected count so it appears in the frontend before run
+        index = self._read_index()
+        # Fallback labels if not set
+        cohort = index["cohorts"].setdefault(cohort_id, {"label": cohort_id, "batches": {}})
+        batch_entry = cohort["batches"].setdefault(batch_id, {
+            "label": batch_id,
+            "studentCount": 0,
+            "flaggedCount": 0,
+        })
+        batch_entry["collectedCount"] = len(subs)
+        self._write_index(index)
 
     def save_run(self, cohort_id, cohort_label, batch_id, batch_label, mode,
                  student_folders, comparisons) -> dict:

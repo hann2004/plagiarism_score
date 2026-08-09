@@ -24,6 +24,7 @@ from jplag_runner import run_jplag, JPlagError
 from storage import Storage
 from language_detector import detect_language
 from docx_converter import convert_docx_to_txt
+from fetcher import fetch_submissions
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -59,6 +60,25 @@ def get_batch(cohort_id: str, batch_id: str):
     if not batch:
         raise HTTPException(404, "No results yet for this batch.")
     return batch
+
+
+@app.get("/api/cohorts/{cohort_id}/batches/{batch_id}/submissions")
+def get_submissions(cohort_id: str, batch_id: str):
+    subs = storage.get_submissions(cohort_id, batch_id)
+    return {"count": len(subs), "submissions": subs}
+
+
+@app.post("/api/cohorts/{cohort_id}/batches/{batch_id}/submissions")
+def submit_link(
+    cohort_id: str, batch_id: str,
+    student_name: str = Form(...),
+    github_link: str = Form(""),
+    doc_link: str = Form("")
+):
+    if not student_name.strip():
+        raise HTTPException(400, "Student name is required")
+    storage.add_submission(cohort_id, batch_id, student_name.strip(), github_link.strip(), doc_link.strip())
+    return {"ok": True}
 
 
 @app.delete("/api/cohorts/{cohort_id}/batches/{batch_id}")
@@ -153,6 +173,64 @@ async def run_comparison(
         comparisons=result["comparisons"],
     )
     return {"ok": True, "studentCount": saved["studentCount"], "pairCount": len(saved["pairs"])}
+
+
+@app.post("/api/run-fetched")
+async def run_fetched_comparison(
+    cohort_id: str = Form(...),
+    cohort_label: str = Form(...),
+    batch_id: str = Form(...),
+    batch_label: str = Form(...),
+    mode: str = Form(...),
+):
+    submissions = storage.get_submissions(cohort_id, batch_id)
+    if not submissions:
+        raise HTTPException(400, "No submissions collected for this batch yet.")
+
+    run_dir = WORK_DIR / f"{cohort_id}__{batch_id}__{mode}"
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+        
+    fetch_result = fetch_submissions(submissions, run_dir, mode)
+    submissions_dir = run_dir / "submissions"
+    
+    student_folders = [p.name for p in submissions_dir.iterdir() if p.is_dir()]
+    if len(student_folders) < 2:
+        raise HTTPException(
+            400,
+            f"Successfully fetched {fetch_result['success_count']} folders, but need at least 2 to compare. Errors: {fetch_result['errors']}"
+        )
+
+    # Convert DOCX reports if present
+    convert_docx_to_txt(submissions_dir)
+
+    if mode == "report":
+        jplag_language = "text"
+    else:
+        try:
+            jplag_language = detect_language(submissions_dir)
+        except Exception as e:
+            raise HTTPException(400, f"Language detection failed: {str(e)}")
+
+    try:
+        result = run_jplag(JPLAG_JAR, submissions_dir, jplag_language, run_dir / "result")
+    except JPlagError as e:
+        raise HTTPException(500, str(e))
+
+    saved = storage.save_run(
+        cohort_id=cohort_id, cohort_label=cohort_label,
+        batch_id=batch_id, batch_label=batch_label,
+        mode=mode, student_folders=student_folders,
+        comparisons=result["comparisons"],
+    )
+    
+    return {
+        "ok": True, 
+        "studentCount": saved["studentCount"], 
+        "pairCount": len(saved["pairs"]),
+        "fetchErrors": fetch_result["errors"]
+    }
+
 
 
 # Serve the frontend directly so `uvicorn main:app` gives you a fully
