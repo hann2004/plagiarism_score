@@ -27,7 +27,7 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
         "java", "-jar", str(jar_path),
         str(submissions_dir),
         "-l", language,
-        "--mode", "run",
+        "--mode", "RUN",
         "-r", str(result_base),
     ]
 
