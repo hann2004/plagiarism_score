@@ -278,19 +278,38 @@
 
     <!-- Fix 2: Matrix View -->
     <div id="panelMatrix" style="display:none;">
-      <div class="matrix-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; margin-top: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
-          <div>
-            <h3 style="font-weight: 700; font-size: 17px; margin: 0; color: var(--text);">Similarity Matrix Heatmap</h3>
-            <p style="margin: 4px 0 0; font-size: 13px; color: var(--muted);">Students ordered using nearest-neighbor seriation so plagiarized groups cluster together along the diagonal.</p>
+      <div class="matrix-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 28px; margin-top: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
+        
+        <!-- Header Section -->
+        <div style="margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 16px;">
+          <h3 style="font-weight: 700; font-size: 19px; margin: 0; color: var(--text); display: flex; align-items: center; gap: 10px;">
+            <span>Similarity Matrix Heatmap</span>
+            <span style="font-size: 11px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; background: var(--surface-2); padding: 3px 8px; border-radius: 6px; color: var(--muted); border: 1px solid var(--line);">Seriation Ordered</span>
+          </h3>
+          <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--muted);">Students ordered using nearest-neighbor seriation so plagiarized groups cluster together along the diagonal.</p>
+        </div>
+
+        <!-- Prominent Legend Bar -->
+        <div style="background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+          <div style="font-size: 12.5px; font-weight: 600; color: var(--text); font-family: 'Inter', sans-serif;">Heatmap Color Scale</div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; max-width: 500px; min-width: 260px;">
+            <div style="width: 100%; height: 14px; border-radius: 7px; background: linear-gradient(to right, #1e242b, #2b4f5e 35%, #d69e2e 65%, #e53e3e 90%, #ff3b30 100%); border: 1px solid var(--line); box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);"></div>
+            <div style="display: flex; justify-content: space-between; width: 100%; font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--muted);">
+              <span>0% Clean</span>
+              <span>35% Low</span>
+              <span>65% Moderate</span>
+              <span>85%+ High Flag</span>
+            </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); font-family: 'IBM Plex Mono', monospace;">
-            <span>0% Clean</span>
-            <div style="width: 140px; height: 10px; border-radius: 5px; background: linear-gradient(to right, #1c1915, #3d5a45 35%, #d9a441 70%, #ff3b30 100%); border: 1px solid var(--line);"></div>
-            <span>100% Flagged</span>
+          <div style="display: flex; gap: 16px; font-size: 12px; color: var(--muted);">
+            <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #1e242b; border: 1px solid var(--line);"></span>Clean (Dark Slate)</span>
+            <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #d69e2e;"></span>Moderate (50-70%)</span>
+            <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #e53e3e;"></span>High (85%+)</span>
           </div>
         </div>
-        <div class="matrix-wrap" id="matrixWrap" style="overflow-x: auto; position: relative;">
+
+        <!-- SVG Matrix Canvas Container -->
+        <div class="matrix-wrap" id="matrixWrap" style="overflow-x: auto; position: relative; padding: 16px; background: var(--bg); border-radius: 10px; border: 1px solid var(--line);">
           <svg class="matrix-svg" id="matrixSvg"></svg>
           <div class="matrix-tooltip" id="matrixTooltip"></div>
         </div>
@@ -859,7 +878,7 @@ function renderMatrixView(){
   if (!state.batch || !state.batch.pairs) return;
 
   const q = (document.getElementById('search').value || '').toLowerCase();
-  // Include all pairs for the matrix view (or above a baseline 10% similarity) so the heatmap forms a complete grid
+  // Include all pairs for the matrix view so the heatmap forms a complete grid
   const allBatchPairs = state.batch.pairs.filter(p =>
     (state.activeType==='all' || p.type===state.activeType) &&
     (p.a.toLowerCase().includes(q) || p.b.toLowerCase().includes(q))
@@ -914,55 +933,84 @@ function renderMatrixView(){
   }
 
   const n = orderedStudents.length;
-  const cellSize = Math.max(28, Math.min(48, Math.floor(700 / n)));
-  const margin = { top: 120, left: 140, right: 120, bottom: 30 };
+  const cellSize = Math.max(30, Math.min(50, Math.floor(720 / n)));
+  const margin = { top: 130, left: 150, right: 200, bottom: 40 };
   const width = margin.left + n * cellSize + margin.right;
   const height = margin.top + n * cellSize + margin.bottom;
 
   svg.attr('width', width).attr('height', height);
+
+  // Add SVG Glow Filter definition for cell hover glow
+  const defs = svg.append('defs');
+  const filter = defs.append('filter')
+    .attr('id', 'matrixCellGlow')
+    .attr('x', '-50%').attr('y', '-50%')
+    .attr('width', '200%').attr('height', '200%');
+  filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
+  const feMerge = filter.append('feMerge');
+  feMerge.append('feMergeNode').attr('in', 'blur');
+  feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
 
   const tooltip = document.getElementById('matrixTooltip');
 
   // Matrix group
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-  // Hover Highlight Backgrounds
-  const rowHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', n * cellSize).attr('height', cellSize).attr('pointer-events', 'none');
-  const colHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', cellSize).attr('height', n * cellSize).attr('pointer-events', 'none');
+  // Hover Highlight Background Ribbons
+  const rowHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', n * cellSize).attr('height', cellSize).attr('pointer-events', 'none').attr('rx', 4);
+  const colHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', cellSize).attr('height', n * cellSize).attr('pointer-events', 'none').attr('rx', 4);
 
   // Column Labels (Top)
   g.selectAll('.colLabel')
     .data(orderedStudents).join('text')
     .attr('class', 'colLabel')
     .attr('x', (d, i) => i * cellSize + cellSize / 2)
-    .attr('y', -10)
+    .attr('y', -12)
     .attr('text-anchor', 'start')
-    .attr('transform', (d, i) => `rotate(-45, ${i * cellSize + cellSize / 2}, -10)`)
+    .attr('transform', (d, i) => `rotate(-45, ${i * cellSize + cellSize / 2}, -12)`)
     .attr('font-family', 'IBM Plex Mono, monospace')
-    .attr('font-size', '11px')
+    .attr('font-size', '11.5px')
     .attr('fill', 'var(--text)')
+    .attr('cursor', 'pointer')
     .text(d => d);
 
   // Row Labels (Left)
   g.selectAll('.rowLabel')
     .data(orderedStudents).join('text')
     .attr('class', 'rowLabel')
-    .attr('x', -10)
+    .attr('x', -14)
     .attr('y', (d, i) => i * cellSize + cellSize / 2 + 4)
     .attr('text-anchor', 'end')
     .attr('font-family', 'IBM Plex Mono, monospace')
-    .attr('font-size', '11px')
+    .attr('font-size', '11.5px')
     .attr('fill', 'var(--text)')
+    .attr('cursor', 'pointer')
     .text(d => d);
 
-  // Color Scale Generator (Continuous HSL/RGB interpolation)
+  // Requirement 1 Color Scale: Visible soft sage green -> warm amber -> vivid red-orange
   const getMatrixColor = (sim) => {
-    if (sim >= 85) return d3.interpolateRgb('#e6a100', '#ff3b30')((sim - 85) / 15);
-    if (sim >= 50) return d3.interpolateRgb('#3d5a45', '#e6a100')((sim - 50) / 35);
-    return d3.interpolateRgb('#1c231f', '#3d5a45')(sim / 50);
+    if (sim >= 85) return d3.interpolateRgb('#d99b26', '#ff3b30')((sim - 85) / 15);
+    if (sim >= 40) return d3.interpolateRgb('#3f6b4e', '#d99b26')((sim - 40) / 45);
+    return d3.interpolateRgb('#2b4736', '#3f6b4e')(sim / 40);
   };
 
-  // Render Grid Cells
+  // Pre-calculate per-student statistics for the marginal chart
+  const studentStats = orderedStudents.map(s => {
+    let maxSim = 0;
+    let flagCount = 0;
+    orderedStudents.forEach(other => {
+      if (s !== other) {
+        const pair = pairMap.get(`${s}__${other}`);
+        if (pair) {
+          if (pair.similarity > maxSim) maxSim = pair.similarity;
+          if (pair.similarity >= 50) flagCount++;
+        }
+      }
+    });
+    return { maxSim, flagCount };
+  });
+
+  // Render Grid Cells with requirement 2: 1px visible border structure
   const cellsGroup = g.append('g');
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
@@ -977,8 +1025,12 @@ function renderMatrixView(){
         .attr('rx', 4);
 
       if (i === j) {
-        // Diagonal self-cell
-        cell.attr('fill', 'var(--surface-2)').attr('opacity', 0.4);
+        // Diagonal self-cell (Requirement 2: distinct, subtle 1px border)
+        cell.attr('fill', 'var(--surface-2)')
+          .attr('fill-opacity', 0.5)
+          .attr('stroke', 'var(--line)')
+          .attr('stroke-width', 1);
+
         cell.on('mouseenter', () => {
           rowHighlight.attr('y', i * cellSize).attr('opacity', 0.4);
           colHighlight.attr('x', j * cellSize).attr('opacity', 0.4);
@@ -993,41 +1045,75 @@ function renderMatrixView(){
           const isOverThreshold = sim >= state.threshold;
           const cellColor = getMatrixColor(sim);
 
+          // Requirement 1 & 2: Visible color fill + crisp 1px grid border
           cell.attr('fill', cellColor)
-            .attr('fill-opacity', isOverThreshold ? 0.9 : 0.35 + (sim / 100) * 0.45)
-            .attr('stroke', isOverThreshold ? (sim >= 90 ? '#ff3b30' : '#e6a100') : 'none')
-            .attr('stroke-width', isOverThreshold ? 1.5 : 0)
+            .attr('fill-opacity', isOverThreshold ? 0.95 : 0.85)
+            .attr('stroke', isOverThreshold ? (sim >= 85 ? '#ff3b30' : '#d99b26') : 'var(--line)')
+            .attr('stroke-width', isOverThreshold ? 1.5 : 1)
             .style('cursor', 'pointer');
 
-          cell.on('mouseenter', (e) => {
+          // Requirement 6 & 7: Scale-up, soft glow filter, rich tooltip, and drawer trigger
+          cell.on('mouseenter', function(e) {
               rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
               colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
               
-              // Highlight row & col text
+              // Highlight row & column text labels
               svg.selectAll('.rowLabel').filter((d, idx) => idx === i).attr('fill', 'var(--primary)').attr('font-weight', '700');
               svg.selectAll('.colLabel').filter((d, idx) => idx === j).attr('fill', 'var(--primary)').attr('font-weight', '700');
 
+              // Lift cell and apply glow filter
+              d3.select(this)
+                .raise()
+                .attr('stroke', '#ffffff')
+                .attr('stroke-width', 2.5)
+                .style('filter', 'url(#matrixCellGlow)');
+
+              // Highlight marginal chart bar
+              barGroup.selectAll(`.bar-${i}`).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
+
               tooltip.style.opacity = 1;
-              tooltip.innerHTML = `<div style="font-weight: 700; color: var(--text);">${s1} ↔ ${s2}</div>
-                <div style="margin-top: 4px; font-size: 12px; color: ${sim >= 90 ? 'var(--high)' : 'var(--med)'}; font-weight: 600;">
-                  Similarity: ${sim}% (${pair.type})
+              tooltip.innerHTML = `
+                <div style="font-weight: 700; font-size: 13px; color: var(--text); padding-bottom: 4px; border-bottom: 1px solid var(--line); margin-bottom: 6px;">${s1} ↔ ${s2}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px;">
+                  <span style="font-size: 12px; color: var(--muted);">Similarity Score:</span>
+                  <span style="font-size: 13px; font-weight: 800; color: ${getMatrixColor(sim)}; font-family: 'IBM Plex Mono', monospace;">${sim}%</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px;">
+                  <span style="font-size: 11.5px; color: var(--muted);">Type:</span>
+                  <span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text);">${pair.type}</span>
+                </div>
+                <div style="font-size: 11px; color: var(--primary); font-weight: 600; text-align: center; margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--line);">
+                  ⚡ Click cell to open side-by-side diff
                 </div>`;
             })
             .on('mousemove', (e) => {
               const rect = document.getElementById('matrixWrap').getBoundingClientRect();
-              tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
+              tooltip.style.left = (e.clientX - rect.left + 16) + 'px';
               tooltip.style.top = (e.clientY - rect.top + 10) + 'px';
             })
-            .on('mouseleave', () => { 
+            .on('mouseleave', function() { 
               tooltip.style.opacity = 0; 
               rowHighlight.attr('opacity', 0);
               colHighlight.attr('opacity', 0);
               svg.selectAll('.rowLabel').attr('fill', 'var(--text)').attr('font-weight', '400');
               svg.selectAll('.colLabel').attr('fill', 'var(--text)').attr('font-weight', '400');
+
+              d3.select(this)
+                .attr('stroke', isOverThreshold ? (sim >= 85 ? '#ff3b30' : '#d99b26') : 'var(--line)')
+                .attr('stroke-width', isOverThreshold ? 1.5 : 1)
+                .style('filter', 'none');
+
+              barGroup.selectAll(`.bar-${i}`).attr('stroke', 'none');
             })
             .on('click', () => openDrawer(pair));
         } else {
-          cell.attr('fill', 'var(--surface)').attr('stroke', 'var(--line)').attr('stroke-width', 0.5).attr('fill-opacity', 0.15);
+          // Empty / baseline cell (Requirement 1 & 2: visible sage baseline fill + 1px border)
+          const baseColor = getMatrixColor(0);
+          cell.attr('fill', baseColor)
+            .attr('fill-opacity', 0.8)
+            .attr('stroke', 'var(--line)')
+            .attr('stroke-width', 1);
+
           cell.on('mouseenter', () => {
             rowHighlight.attr('y', i * cellSize).attr('opacity', 0.4);
             colHighlight.attr('x', j * cellSize).attr('opacity', 0.4);
@@ -1040,30 +1126,44 @@ function renderMatrixView(){
     }
   }
 
-  // Marginal Bar Chart
-  const counts = orderedStudents.map(s => {
-    let count = 0;
-    for(const other of orderedStudents) if(pairMap.has(`${s}__${other}`)) count++;
-    return count;
-  });
-  const maxFlags = Math.max(...counts, 1);
-  const barScale = d3.scaleLinear().domain([0, maxFlags]).range([0, 80]);
+  // Requirement 4: Redesigned Marginal "Max Similarity & Flags" Bar Chart
+  const barScale = d3.scaleLinear().domain([0, 100]).range([0, 110]);
+  const barGroup = g.append('g').attr('transform', `translate(${n * cellSize + 24}, 0)`);
   
-  const barGroup = g.append('g').attr('transform', `translate(${n * cellSize + 15}, 0)`);
-  barGroup.append('text').attr('x', 0).attr('y', -10).attr('font-size', '11px').attr('fill', 'var(--muted)').text('Flags');
-  
+  // Bar Chart Header
+  barGroup.append('text')
+    .attr('x', 0).attr('y', -12)
+    .attr('font-size', '11.5px')
+    .attr('font-weight', '700')
+    .attr('font-family', 'IBM Plex Mono, monospace')
+    .attr('fill', 'var(--muted)')
+    .text('Max Similarity');
+
   orderedStudents.forEach((s, i) => {
-    const count = counts[i];
+    const stats = studentStats[i];
+    const barWidth = barScale(stats.maxSim);
+    const barColor = getMatrixColor(stats.maxSim);
+
+    // Rounded Bar
     barGroup.append('rect')
-      .attr('x', 0).attr('y', i * cellSize + 2)
-      .attr('width', barScale(count)).attr('height', cellSize - 6)
-      .attr('fill', count > 0 ? 'var(--primary)' : 'var(--surface-2)')
-      .attr('rx', 2);
-      
+      .attr('class', `bar-${i}`)
+      .attr('x', 0).attr('y', i * cellSize + 4)
+      .attr('width', Math.max(6, barWidth))
+      .attr('height', cellSize - 8)
+      .attr('fill', barColor)
+      .attr('rx', 4)
+      .attr('fill-opacity', 0.9)
+      .attr('cursor', 'pointer');
+
+    // Value Badge Text
     barGroup.append('text')
-      .attr('x', barScale(count) + 5).attr('y', i * cellSize + cellSize/2 + 4)
-      .attr('font-size', '11px').attr('font-family', 'IBM Plex Mono, monospace').attr('fill', 'var(--muted)')
-      .text(count > 0 ? count : '');
+      .attr('x', Math.max(6, barWidth) + 8)
+      .attr('y', i * cellSize + cellSize / 2 + 4)
+      .attr('font-size', '11px')
+      .attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('font-weight', '600')
+      .attr('fill', stats.maxSim >= 50 ? 'var(--text)' : 'var(--muted)')
+      .text(`${stats.maxSim}% ${stats.flagCount > 0 ? `(${stats.flagCount} flag${stats.flagCount > 1 ? 's' : ''})` : ''}`);
   });
 }
 
