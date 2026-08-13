@@ -2,30 +2,37 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Batch Review - Integrity Observatory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Integrity Observatory - Tenx Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="d3.min.js"></script>
 <style>
   :root {
-    --bg: #14110E;
-    --surface: #1E1A15;
-    --surface-2: #28231D;
-    --line: #362E27;
-    --line-light: #483E35;
-    --text: #EDE7DE;
-    --muted: #8A8175;
-    --faint: #595247;
-    --primary: #C46A3E;
-    --primary-hover: #D87748;
-    --primary-light: rgba(196, 106, 62, 0.16);
-    --high: #D64545;
-    --high-bg: rgba(214, 69, 69, 0.16);
-    --med: #D9A441;
-    --med-bg: rgba(217, 164, 65, 0.16);
-    --ok: #5B8A72;
-    --ok-bg: rgba(91, 138, 114, 0.16);
+    --bg: #F4F6F8;
+    --surface: #FFFFFF;
+    --surface-2: #F8FAFC;
+    --surface-3: #F1F5F9;
+    --line: #E2E8F0;
+    --line-light: #CBD5E1;
+    --text: #1E293B;
+    --text-dark: #0F172A;
+    --muted: #64748B;
+    --faint: #94A3B8;
+    --primary: #E31B23; /* 10 Academy Signature Red */
+    --primary-hover: #C8141C;
+    --primary-light: #FEF2F2;
+    --primary-border: #FCA5A5;
+    --purple: #8B5CF6;
+    --cyan: #06B6D4;
+    --high: #DC2626;
+    --high-bg: #FEF2F2;
+    --med: #D97706;
+    --med-bg: #FFFBEB;
+    --ok: #059669;
+    --ok-bg: #ECFDF5;
   }
+
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -33,305 +40,444 @@
     color: var(--text);
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
   }
   .mono { font-family: 'IBM Plex Mono', monospace; }
   a { color: inherit; text-decoration: none; }
 
-  .view { display: none; }
-  .view.active { display: block; }
-
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 40px; background: var(--surface); border-bottom: 1px solid var(--line);
+  /* Top Navigation Bar */
+  header.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 64px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
   }
-  .brand { display: flex; align-items: center; gap: 12px; cursor: pointer; }
-  .brand .mark { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); }
-  .brand h1 { font-weight: 700; font-size: 18px; margin: 0; letter-spacing: -0.01em; color: var(--text); }
-  .crumbs { color: var(--faint); font-size: 13.5px; font-weight: 500; }
-  .crumbs span.current { color: var(--text); font-weight: 600; }
-  .crumbs span.link { cursor: pointer; color: var(--muted); }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+  }
+  .tenx-logo img {
+    height: 38px;
+    width: auto;
+    display: block;
+  }
+  .brand-text { display: flex; flex-direction: column; }
+  .brand-title { font-weight: 800; font-size: 15px; color: var(--text-dark); letter-spacing: -0.01em; }
+  .brand-sub { font-size: 11px; color: var(--muted); font-weight: 600; }
+
+  .crumbs { color: var(--faint); font-size: 13px; font-weight: 500; margin-left: 12px; border-left: 1px solid var(--line); padding-left: 16px; }
+  .crumbs span.current { color: var(--text-dark); font-weight: 600; }
+  .crumbs span.link { cursor: pointer; color: var(--muted); transition: color 0.15s; }
   .crumbs span.link:hover { color: var(--primary); }
+
+  .header-right { display: flex; align-items: center; gap: 16px; }
   .topActions { display: flex; gap: 10px; }
   .btn {
     padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
     cursor: pointer; font-family: 'Inter', sans-serif; border: 1px solid var(--line);
     background: var(--surface); color: var(--muted); transition: all 0.15s ease;
+    display: inline-flex; align-items: center; gap: 6px;
   }
-  .btn:hover { border-color: var(--line-light); color: var(--text); background: var(--surface-2); }
-  .btn-primary { background: var(--primary); color: #FFFFFF; border: none; font-weight: 600; }
+  .btn:hover { border-color: var(--line-light); color: var(--text-dark); background: var(--surface-3); }
+  .btn-primary { background: var(--primary); color: #FFFFFF; border: none; font-weight: 600; box-shadow: 0 2px 6px rgba(227, 27, 35, 0.25); }
   .btn-primary:hover { background: var(--primary-hover); color: #FFFFFF; }
 
-  main { padding: 32px 40px 70px; max-width: 1360px; margin: 0 auto; }
 
-  .overview-head { margin-bottom: 24px; }
-  .overview-head h2 { font-weight: 700; font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; color: var(--text); }
-  .overview-head p { color: var(--muted); font-size: 14px; margin: 0; }
-  
-  .empty-cohorts-box {
-    background: var(--surface); border: 2px dashed var(--line); border-radius: 14px;
-    padding: 60px 20px; text-align: center; margin-top: 20px;
+
+  /* Main Layout Shell */
+  .app-shell { display: flex; flex: 1; min-height: calc(100vh - 64px); }
+
+
+
+  /* Main Content Area */
+  main.main-content {
+    flex: 1;
+    padding: 28px 36px 70px;
+    max-width: 1380px;
+    margin: 0 auto;
+    width: 100%;
   }
-  .empty-cohorts-box h3 { font-size: 18px; font-weight: 600; margin: 0 0 8px; color: var(--text); }
-  .empty-cohorts-box p { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
 
-  .orbit-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; position: relative; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+
+  
+  .tenx-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .tenx-card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--surface-3);
+  }
+  .tenx-card-title { font-size: 15px; font-weight: 700; color: var(--text-dark); margin: 0; }
+
+  /* Donut Widget */
+  .donut-widget-body { display: flex; align-items: center; justify-content: space-around; gap: 20px; min-height: 160px; }
+  .donut-legend { display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .donut-legend-item { display: flex; align-items: center; gap: 8px; }
+  .donut-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+  /* Bottom Metrics Grid */
+  .metrics-section {
+    display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 28px;
+  }
+  @media (max-width: 900px) { .metrics-section { grid-template-columns: 1fr; } }
+
+  .key-metrics-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 24px;
+  }
+  .key-metrics-head {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
+  }
+  .metrics-timeline {
+    position: relative; height: 32px; display: flex; align-items: center; margin-bottom: 24px; padding: 0 10px;
+  }
+  .metrics-line {
+    position: absolute; left: 0; right: 0; height: 3px; background: var(--primary); border-radius: 2px;
+  }
+  .metrics-nodes {
+    display: flex; justify-content: space-between; width: 100%; position: relative; z-index: 2;
+  }
+  .metrics-node {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--primary);
+  }
+  .metrics-badge {
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
+    background: var(--surface-3); border: 1px solid var(--line); color: var(--text-dark);
+  }
+
+  .sub-metrics-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  .sub-metric-box {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+  }
+  .sub-metric-title { font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .sub-metric-val { font-size: 13px; font-weight: 700; color: var(--ok); background: var(--ok-bg); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.2); display: inline-block; }
+
+  .announcement-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 24px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .announcement-card h4 { margin: 0 0 10px; font-size: 15px; font-weight: 700; color: var(--text-dark); line-height: 1.4; }
+  .announcement-card p { margin: 0 0 16px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .announcement-card a.learn-more { font-size: 13px; font-weight: 600; color: var(--primary); text-decoration: underline; }
+
+  /* Overview Section Headings */
+  .overview-head { margin-bottom: 20px; }
+  .overview-head h2 { font-weight: 800; font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; color: var(--text-dark); }
+  .overview-head p { color: var(--muted); font-size: 14px; margin: 0; }
+
+  /* Cohorts Graph Box */
+  .orbit-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
   #orbitGraph { width: 100%; display: block; }
   .orbit-legend { display: flex; gap: 20px; padding: 12px 16px 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
   .orbit-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
   .cohort-node { cursor: pointer; }
   .cohort-node .ring { fill: none; stroke-width: 1.5px; }
   .cohort-node .core { transition: r .15s, fill .15s; }
-  .cohort-node:hover .core { filter: brightness(1.15); }
+  .cohort-node:hover .core { filter: brightness(0.95); }
   .cohort-node text { font-family: 'IBM Plex Mono', monospace; fill: var(--muted); text-anchor: middle; pointer-events: none; }
-  .cohort-node .lbl-name { font-family: 'Inter', sans-serif; font-weight: 600; fill: var(--text); font-size: 13px; }
+  .cohort-node .lbl-name { font-family: 'Inter', sans-serif; font-weight: 700; fill: var(--text-dark); font-size: 13px; }
   .cohort-node .lbl-meta { font-size: 11px; fill: var(--muted); }
-  .orbit-tooltip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--text); opacity: 0; transition: opacity .1s; white-space: nowrap; box-shadow: 0 8px 16px rgba(0,0,0,0.4); }
+  .orbit-tooltip { position: absolute; pointer-events: none; background: var(--text-dark); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #FFFFFF; opacity: 0; transition: opacity .1s; white-space: nowrap; box-shadow: 0 8px 16px rgba(0,0,0,0.15); }
 
-  .batch-list { display: flex; flex-direction: column; gap: 12px; max-width: 680px; }
-  .batch-row { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; cursor: pointer; transition: all 0.15s ease; }
-  .batch-row:hover { border-color: var(--primary); transform: translateY(-1px); }
-  .batch-row .name { font-size: 15px; font-weight: 600; color: var(--text); }
+  /* Batches List */
+  .batch-list { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
+  .batch-row { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+  .batch-row:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(227, 27, 35, 0.08); }
+  .batch-row .name { font-size: 15px; font-weight: 700; color: var(--text-dark); }
   .batch-row .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
-  .batch-row .flag { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: var(--high); background: var(--high-bg); padding: 4px 10px; border-radius: 6px; }
+  .batch-row .flag { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; color: var(--high); background: var(--high-bg); padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(220, 38, 38, 0.2); }
 
   /* 4 KPI Summary Cards */
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
-  .stat-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
-  .stat-card .stat-label { font-size: 12.5px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
-  .stat-card .stat-value { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600; color: var(--text); }
+  .stat-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+  .stat-card .stat-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .stat-card .stat-value { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 700; color: var(--text-dark); }
   .stat-card .stat-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
 
-  .view-controls-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 14px; }
-  .panel-toggle { display: flex; gap: 8px; }
-  .panel-toggle button { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; border: 1px solid var(--line); background: var(--surface); color: var(--muted); transition: all 0.15s ease; }
-  .panel-toggle button.active { background: var(--primary); color: #FFFFFF; border-color: var(--primary); font-weight: 600; }
-  
-  .density-notice { font-size: 12.5px; color: var(--med); background: var(--med-bg); border: 1px solid rgba(217,164,65,0.3); padding: 6px 12px; border-radius: 8px; display: none; align-items: center; gap: 8px; }
-
   /* Controls Bar */
-  .controls { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; flex-wrap: wrap; background: var(--surface); padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; }
-  .search { flex: 1; min-width: 200px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; color: var(--text); font-size: 13.5px; font-family: 'Inter', sans-serif; outline: none; }
-  .search:focus { border-color: var(--primary); }
+  .controls { display: flex; align-items: center; gap: 16px; margin: 0 0 20px; flex-wrap: wrap; background: var(--surface); padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+  .search { flex: 1; min-width: 200px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; color: var(--text-dark); font-size: 13.5px; font-family: 'Inter', sans-serif; outline: none; transition: border-color 0.15s; }
+  .search:focus { border-color: var(--primary); background: #FFFFFF; }
   .search::placeholder { color: var(--faint); }
   
   .filter-group { display: flex; align-items: center; gap: 6px; }
   .filter-label { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-right: 4px; }
   .chip { padding: 6px 13px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; }
-  .chip:hover { border-color: var(--line-light); color: var(--text); }
+  .chip:hover { border-color: var(--line-light); color: var(--text-dark); background: var(--surface-3); }
   .chip.active { background: var(--primary-light); color: var(--primary); border-color: var(--primary); font-weight: 600; }
   
   .slider-wrap { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; font-weight: 500; margin-left: auto; }
   input[type=range] { accent-color: var(--primary); width: 130px; cursor: pointer; }
 
-  /* Small Multiples Cluster Grid (Fix 1) */
+  .view-controls-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 14px; }
+  .panel-toggle { display: flex; gap: 8px; }
+  .panel-toggle button { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; border: 1px solid var(--line); background: var(--surface); color: var(--muted); transition: all 0.15s ease; }
+  .panel-toggle button.active { background: var(--primary); color: #FFFFFF; border-color: var(--primary); font-weight: 600; box-shadow: 0 2px 4px rgba(227, 27, 35, 0.2); }
+  
+  .density-notice { font-size: 12.5px; color: var(--med); background: var(--med-bg); border: 1px solid rgba(217,119,6,0.3); padding: 6px 12px; border-radius: 8px; display: none; align-items: center; gap: 8px; font-weight: 500; }
+
+  /* Clusters Grid */
   .clusters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; margin-bottom: 24px; }
-  .cluster-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; position: relative; transition: border-color 0.15s ease; }
-  .cluster-card:hover { border-color: var(--line-light); }
+  .cluster-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; position: relative; transition: border-color 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+  .cluster-card:hover { border-color: var(--line-light); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
   .cluster-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-  .cluster-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
-  .cluster-card-badge { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--high-bg); color: var(--high); }
-  .cluster-card-badge.med { background: var(--med-bg); color: var(--med); }
-  .cluster-svg { width: 100%; display: block; height: 210px; }
+  .cluster-card-title { font-size: 13px; font-weight: 700; color: var(--text-dark); }
+  .cluster-card-badge { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: var(--high-bg); color: var(--high); border: 1px solid rgba(220, 38, 38, 0.2); }
+  .cluster-card-badge.med { background: var(--med-bg); color: var(--med); border-color: rgba(217, 119, 6, 0.2); }
+  .cluster-svg { width: 100%; display: block; height: 210px; border-radius: 8px; }
 
-  /* Matrix View (Fix 2) */
-  .matrix-wrap { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; overflow-x: auto; margin-bottom: 24px; }
+  /* Matrix Heatmap */
+  .matrix-wrap { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 20px; overflow-x: auto; margin-bottom: 24px; position: relative; }
   .matrix-svg { display: block; margin: 0 auto; }
-  .matrix-tooltip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--text); opacity: 0; transition: opacity 0.1s; z-index: 30; white-space: nowrap; }
+  .matrix-tooltip { position: absolute; pointer-events: none; background: var(--text-dark); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #FFFFFF; opacity: 0; transition: opacity 0.1s; z-index: 30; white-space: nowrap; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
 
-  /* Data Table */
-  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
-  thead th { text-align: left; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 14px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  /* Table View */
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+  thead th { text-align: left; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 14px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
   tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); transition: background 0.1s ease; }
-  tbody tr:hover { background: var(--surface-2); }
+  tbody tr:hover { background: var(--surface-3); }
   tbody td { padding: 14px 16px; font-size: 14px; vertical-align: middle; }
-  .students { font-weight: 500; }
-  .students small { color: var(--faint); font-size: 12px; display: block; margin-top: 2px; }
-  .type-pill { font-size: 11.5px; padding: 3px 10px; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; background: var(--surface-2); color: var(--muted); font-weight: 500; display: inline-block; }
-  .score { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; }
+  .students { font-weight: 600; color: var(--text-dark); }
+  .students small { color: var(--faint); font-size: 12px; display: block; margin-top: 2px; font-weight: 400; }
+  .type-pill { font-size: 11.5px; padding: 3px 10px; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; background: var(--surface-3); color: var(--muted); font-weight: 600; display: inline-block; border: 1px solid var(--line); }
+  .score { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700; }
   .score.high { color: var(--high); } .score.med { color: var(--med); } .score.ok { color: var(--ok); }
-  .status-select { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; font-weight: 500; cursor: pointer; outline: none; }
+  .status-select { background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; outline: none; }
   .empty { text-align: center; padding: 50px 20px; color: var(--faint); font-size: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 
   /* Modal & Drawer */
-  .scrim { position: fixed; inset: 0; background: rgba(10, 8, 6, 0.7); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; backdrop-filter: blur(3px); }
+  .scrim { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; backdrop-filter: blur(2px); }
   .scrim.open { opacity: 1; pointer-events: auto; }
-  .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-46%); width: 480px; max-width: 92vw; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 28px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 21; box-shadow: 0 20px 30px rgba(0,0,0,0.5); }
+  .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-46%); width: 480px; max-width: 92vw; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 51; box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
   .modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%,-50%); }
-  .modal h3 { font-weight: 700; font-size: 19px; margin: 0 0 20px; letter-spacing: -0.01em; color: var(--text); }
+  .modal h3 { font-weight: 800; font-size: 19px; margin: 0 0 20px; letter-spacing: -0.01em; color: var(--text-dark); }
   .field { margin-bottom: 16px; }
   .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
-  .field input[type=text], .field select { width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px; font-family: 'Inter', sans-serif; outline: none; }
-  .field input[type=text]:focus, .field select:focus { border-color: var(--primary); }
+  .field input[type=text], .field select { width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; color: var(--text-dark); font-size: 14px; font-family: 'Inter', sans-serif; outline: none; }
+  .field input[type=text]:focus, .field select:focus { border-color: var(--primary); background: #FFFFFF; }
   .dropzone { border: 2px dashed var(--line); border-radius: 10px; padding: 24px; text-align: center; color: var(--faint); font-size: 13px; cursor: pointer; transition: all 0.15s ease; background: var(--surface-2); }
   .dropzone:hover, .dropzone.hover { border-color: var(--primary); background: var(--primary-light); }
-  .dropzone b { color: var(--text); display: block; margin-bottom: 4px; font-size: 13.5px; font-weight: 600; }
+  .dropzone b { color: var(--text-dark); display: block; margin-bottom: 4px; font-size: 13.5px; font-weight: 600; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
   .run-status { font-size: 13px; color: var(--muted); margin-top: 14px; min-height: 18px; font-weight: 500; }
 
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 90vw; max-width: 1200px; background: var(--bg); border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .25s ease; z-index: 22; overflow-y: auto; padding: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; }
+  /* Diff Drawer */
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 90vw; max-width: 1200px; background: #FFFFFF; border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .25s ease; z-index: 52; overflow-y: auto; padding: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.15); display: flex; flex-direction: column; }
   .drawer.open { transform: translateX(0); }
   .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; }
-  .drawer-header h2 { font-weight: 700; font-size: 17px; margin: 0; color: var(--text); }
+  .drawer-header h2 { font-weight: 800; font-size: 17px; margin: 0; color: var(--text-dark); }
   .drawer-header .sub { color: var(--muted); font-size: 12.5px; font-weight: 500; }
   .drawer-close { background: none; border: none; color: var(--faint); font-size: 24px; cursor: pointer; font-weight: 400; }
-  .drawer-close:hover { color: var(--text); }
-  .drawer-nav { display: flex; align-items: center; gap: 12px; padding: 10px 24px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; }
-  .drawer-nav button { background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-family: 'Inter', sans-serif; }
-  .drawer-nav button:hover { border-color: var(--primary); }
-  .drawer-nav .nav-label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
-  .diff-body { display: flex; flex: 1; overflow: hidden; }
+  .drawer-close:hover { color: var(--text-dark); }
+  .drawer-nav { display: flex; align-items: center; gap: 12px; padding: 10px 24px; background: var(--surface-2); border-bottom: 1px solid var(--line); flex-shrink: 0; }
+  .drawer-nav button { background: var(--surface); border: 1px solid var(--line); color: var(--text-dark); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-family: 'Inter', sans-serif; font-weight: 600; }
+  .drawer-nav button:hover { border-color: var(--primary); color: var(--primary); }
+  .drawer-nav .nav-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .diff-body { display: flex; flex: 1; overflow: hidden; background: #FAFAFA; }
   .diff-pane { flex: 1; overflow-y: auto; position: relative; border-right: 1px solid var(--line); }
   .diff-pane:last-child { border-right: none; }
-  .diff-pane-header { padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--muted); position: sticky; top: 0; z-index: 2; }
-  .diff-pane pre { margin: 0; padding: 12px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text); counter-reset: line; }
+  .diff-pane-header { padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--muted); position: sticky; top: 0; z-index: 2; }
+  .diff-pane pre { margin: 0; padding: 12px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text-dark); counter-reset: line; }
   .diff-pane .line { display: block; }
   .diff-pane .line::before { counter-increment: line; content: counter(line); display: inline-block; width: 3em; margin-right: 12px; text-align: right; color: var(--faint); font-size: 11px; user-select: none; }
-  .diff-pane .line.match-active { background: rgba(214, 69, 69, 0.25); border-left: 3px solid var(--high); }
-  .diff-pane .line.match-other { background: rgba(217, 164, 65, 0.12); }
-  .diff-minimap { position: absolute; right: 0; top: 36px; bottom: 0; width: 8px; background: var(--surface-2); }
+  .diff-pane .line.match-active { background: #FEF2F2; border-left: 3px solid var(--high); color: #991B1B; font-weight: 600; }
+  .diff-pane .line.match-other { background: #FFFBEB; border-left: 3px solid var(--med); }
+  .diff-minimap { position: absolute; right: 0; top: 36px; bottom: 0; width: 8px; background: var(--surface-3); }
   .diff-minimap-tick { position: absolute; right: 0; width: 8px; background: var(--high); opacity: 0.7; border-radius: 1px; min-height: 2px; }
   .drawer-actions { display: flex; gap: 12px; padding: 14px 24px; background: var(--surface); border-top: 1px solid var(--line); flex-shrink: 0; }
-  .verdict-note { background: var(--med-bg); border: 1px solid var(--med); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--med); line-height: 1.5; margin: 0 24px 0; flex-shrink: 0; }
+  .verdict-note { background: var(--med-bg); border: 1px solid var(--med); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--med); line-height: 1.5; margin: 10px 24px 0; flex-shrink: 0; font-weight: 500; }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="brand" id="brandHome">
-    <span class="mark"></span>
-    <h1>Integrity Observatory</h1>
+<!-- Top Navigation Bar -->
+<header class="app-header">
+  <div class="header-left">
+    <div class="brand" id="brandHome">
+      <div class="tenx-logo"><img src="10_acad_logo.jpeg" alt="10 Academy"></div>
+      <div class="brand-text">
+        <span class="brand-title">Tenx Platform</span>
+        <span class="brand-sub">Integrity Observatory</span>
+      </div>
+    </div>
+    <div class="crumbs" id="crumbs"></div>
   </div>
-  <div class="crumbs" id="crumbs"></div>
-  <div class="topActions">
-    <button class="btn" id="refreshBtn">Refresh</button>
-    <button class="btn btn-primary" id="openUpload">Run comparison</button>
+
+  <div class="header-right">
+    <div class="topActions">
+      <button class="btn" id="refreshBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+      <button class="btn btn-primary" id="openUpload">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        Run comparison
+      </button>
+    </div>
   </div>
 </header>
 
-<main>
-  <div class="view active" id="viewCohorts">
-    <div class="overview-head">
-      <h2>Cohorts</h2>
-      <p>Every student cohort, organized by run history. Click a cohort to inspect its weekly batches.</p>
-    </div>
-    <div class="orbit-wrap" id="orbitWrap">
-      <div class="orbit-legend">
-        <span><span class="dot" style="background:var(--high)"></span>Flagged pairs present (≥90%)</span>
-        <span><span class="dot" style="background:var(--ok)"></span>Clean batch</span>
-        <span style="color:var(--faint); margin-left:auto;">Node size reflects cohort size</span>
-      </div>
-      <svg id="orbitGraph" height="520"></svg>
-      <div class="orbit-tooltip" id="orbitTooltip"></div>
-    </div>
-  </div>
+<div class="app-shell">
 
-  <div class="view" id="viewBatches">
-    <div class="overview-head">
-      <h2 id="cohortTitle">—</h2>
-      <p>Submissions checked independently for similarity across students.</p>
-    </div>
-    <div class="batch-list" id="batchList"></div>
-  </div>
+  <!-- Main Content Workspace -->
+  <main class="main-content">
 
-  <div class="view" id="viewResults">
-    <div class="stats-grid" id="resultsStats"></div>
-
-    <div class="controls">
-      <input class="search" id="search" placeholder="Search student name…">
+    <!-- View 1: Cohorts & Dashboard Home -->
+    <div class="view active" id="viewCohorts">
       
-      <div class="filter-group">
-        <span class="filter-label">Type:</span>
-        <button class="chip active" data-type="all">All</button>
-        <button class="chip" data-type="Code">Code</button>
-        <button class="chip" data-type="Report">Report</button>
+
+      <div class="overview-head">
+        <h2>Cohorts Observatory</h2>
+        <p>Student cohorts organized by analysis history. Click a cohort node to inspect its weekly batches.</p>
       </div>
 
-      <div class="filter-group">
-        <span class="filter-label">Similarity:</span>
-        <button class="chip sim-chip" data-threshold="0">All</button>
-        <button class="chip sim-chip" data-threshold="60">60%+</button>
-        <button class="chip sim-chip" data-threshold="70">70%+</button>
-        <button class="chip sim-chip" data-threshold="80">80%+</button>
-        <button class="chip sim-chip active" data-threshold="90">90%+</button>
-      </div>
-
-      <div class="slider-wrap">
-        Threshold <input type="range" min="0" max="95" value="90" id="thresholdSlider"><span class="mono" id="sliderVal">90%</span>
+      <div class="orbit-wrap" id="orbitWrap" style="min-height: 560px;">
+        <div class="orbit-legend">
+          <span><span class="dot" style="background:#DC2626"></span>Flagged pairs present (≥90%)</span>
+          <span><span class="dot" style="background:#059669"></span>Clean batch</span>
+          <span style="color:#94A3B8; margin-left:auto;">Node size reflects student count</span>
+        </div>
+        <svg id="orbitGraph" width="100%" height="520"></svg>
+        <div class="orbit-tooltip" id="orbitTooltip"></div>
       </div>
     </div>
 
-    <div class="view-controls-bar">
-      <div class="panel-toggle">
-        <button class="active" data-panel="clusters">Small Clusters</button>
-        <button data-panel="matrix">Matrix Heatmap</button>
-        <button data-panel="table">Data Table</button>
+    <!-- View 2: Batches List -->
+    <div class="view" id="viewBatches">
+      <div class="overview-head">
+        <h2 id="cohortTitle">—</h2>
+        <p>Submissions checked independently for similarity across students.</p>
       </div>
-      <div class="density-notice" id="densityNotice">⚡ Auto-switched to Matrix View for high pair density (&gt;25 pairs)</div>
-      <button class="btn" style="margin-left: auto; color: var(--high); border-color: rgba(214, 69, 69, 0.3);" id="deleteBatchBtn">Delete Comparison</button>
+      <div class="batch-list" id="batchList"></div>
     </div>
 
-    <!-- Fix 1: Small Multiples Cluster Grid -->
-    <div id="panelClusters">
-      <div class="clusters-grid" id="clustersGrid"></div>
-      <div class="empty" id="clustersEmpty" style="display:none;">No cluster connections match the current threshold.</div>
-    </div>
+    <!-- View 3: Batch Results -->
+    <div class="view" id="viewResults">
+      <div class="stats-grid" id="resultsStats"></div>
 
-    <!-- Fix 2: Matrix View -->
-    <div id="panelMatrix" style="display:none;">
-      <div class="matrix-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 28px; margin-top: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
+      <div class="controls">
+        <input class="search" id="search" placeholder="Search student name…">
         
-        <!-- Header Section -->
-        <div style="margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 16px;">
-          <h3 style="font-weight: 700; font-size: 19px; margin: 0; color: var(--text); display: flex; align-items: center; gap: 10px;">
-            <span>Similarity Matrix Heatmap</span>
-            <span style="font-size: 11px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; background: var(--surface-2); padding: 3px 8px; border-radius: 6px; color: var(--muted); border: 1px solid var(--line);">Seriation Ordered</span>
-          </h3>
-          <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--muted);">Students ordered using nearest-neighbor seriation so plagiarized groups cluster together along the diagonal.</p>
+        <div class="filter-group">
+          <span class="filter-label">Type:</span>
+          <button class="chip active" data-type="all">All</button>
+          <button class="chip" data-type="Code">Code</button>
+          <button class="chip" data-type="Report">Report</button>
         </div>
 
-        <!-- Prominent Legend Bar -->
-        <div style="background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-          <div style="font-size: 12.5px; font-weight: 600; color: var(--text); font-family: 'Inter', sans-serif;">Heatmap Color Scale</div>
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; max-width: 500px; min-width: 260px;">
-            <div style="width: 100%; height: 14px; border-radius: 7px; background: linear-gradient(to right, #1e242b, #2b4f5e 35%, #d69e2e 65%, #e53e3e 90%, #ff3b30 100%); border: 1px solid var(--line); box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);"></div>
-            <div style="display: flex; justify-content: space-between; width: 100%; font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--muted);">
-              <span>0% Clean</span>
-              <span>35% Low</span>
-              <span>65% Moderate</span>
-              <span>85%+ High Flag</span>
+        <div class="filter-group">
+          <span class="filter-label">Similarity:</span>
+          <button class="chip sim-chip" data-threshold="0">All</button>
+          <button class="chip sim-chip" data-threshold="60">60%+</button>
+          <button class="chip sim-chip" data-threshold="70">70%+</button>
+          <button class="chip sim-chip" data-threshold="80">80%+</button>
+          <button class="chip sim-chip active" data-threshold="90">90%+</button>
+        </div>
+
+        <div class="slider-wrap">
+          Threshold <input type="range" min="0" max="95" value="90" id="thresholdSlider"><span class="mono" id="sliderVal">90%</span>
+        </div>
+      </div>
+
+      <div class="view-controls-bar">
+        <div class="panel-toggle">
+          <button class="active" data-panel="clusters">Small Clusters</button>
+          <button data-panel="matrix">Matrix Heatmap</button>
+          <button data-panel="table">Data Table</button>
+        </div>
+        <div class="density-notice" id="densityNotice">⚡ Auto-switched to Matrix View for high pair density (&gt;25 pairs)</div>
+        <button class="btn" style="margin-left: auto; color: var(--high); border-color: var(--primary-border);" id="deleteBatchBtn">Delete Comparison</button>
+      </div>
+
+      <!-- Panel 1: Small Multiples Clusters -->
+      <div id="panelClusters">
+        <div class="clusters-grid" id="clustersGrid"></div>
+        <div class="empty" id="clustersEmpty" style="display:none;">No cluster connections match the current threshold.</div>
+      </div>
+
+      <!-- Panel 2: Matrix Heatmap View -->
+      <div id="panelMatrix" style="display:none;">
+        <div class="tenx-card" style="padding: 24px; margin-top: 16px;">
+          <div style="margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 16px;">
+            <h3 style="font-weight: 800; font-size: 19px; margin: 0; color: var(--text-dark); display: flex; align-items: center; gap: 10px;">
+              <span>Similarity Matrix Heatmap</span>
+              <span style="font-size: 11px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; background: var(--surface-3); padding: 3px 8px; border-radius: 6px; color: var(--muted); border: 1px solid var(--line);">Seriation Ordered</span>
+            </h3>
+            <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--muted);">Students ordered using nearest-neighbor seriation so plagiarized groups cluster together along the diagonal.</p>
+          </div>
+
+          <!-- Color Legend Bar -->
+          <div style="background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+            <div style="font-size: 12.5px; font-weight: 700; color: var(--text-dark);">Heatmap Color Scale</div>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; max-width: 500px; min-width: 260px;">
+              <div style="width: 100%; height: 14px; border-radius: 7px; background: linear-gradient(to right, #F1F5F9, #CBD5E1 30%, #F59E0B 65%, #DC2626 90%, #E31B23 100%); border: 1px solid var(--line);"></div>
+              <div style="display: flex; justify-content: space-between; width: 100%; font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--muted);">
+                <span>0% Clean</span>
+                <span>35% Low</span>
+                <span>65% Moderate</span>
+                <span>85%+ High Flag</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 16px; font-size: 12px; color: var(--muted);">
+              <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #F1F5F9; border: 1px solid var(--line);"></span>Clean</span>
+              <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #F59E0B;"></span>Moderate</span>
+              <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #E31B23;"></span>High</span>
             </div>
           </div>
-          <div style="display: flex; gap: 16px; font-size: 12px; color: var(--muted);">
-            <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #1e242b; border: 1px solid var(--line);"></span>Clean (Dark Slate)</span>
-            <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #d69e2e;"></span>Moderate (50-70%)</span>
-            <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #e53e3e;"></span>High (85%+)</span>
+
+          <!-- Matrix SVG Canvas -->
+          <div class="matrix-wrap" id="matrixWrap">
+            <svg class="matrix-svg" id="matrixSvg"></svg>
+            <div class="matrix-tooltip" id="matrixTooltip"></div>
           </div>
         </div>
-
-        <!-- SVG Matrix Canvas Container -->
-        <div class="matrix-wrap" id="matrixWrap" style="overflow-x: auto; position: relative; padding: 16px; background: var(--bg); border-radius: 10px; border: 1px solid var(--line);">
-          <svg class="matrix-svg" id="matrixSvg"></svg>
-          <div class="matrix-tooltip" id="matrixTooltip"></div>
-        </div>
+        <div class="empty" id="matrixEmpty" style="display:none;">No similarity matches to display in matrix view.</div>
       </div>
-      <div class="empty" id="matrixEmpty" style="display:none;">No similarity matches to display in matrix view.</div>
+
+      <!-- Panel 3: Data Table -->
+      <div id="panelTable" style="display:none;">
+        <table>
+          <thead><tr><th>Students</th><th>Type</th><th>Similarity</th><th>Status</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty" id="emptyState" style="display:none;">No student pairs match the current filter criteria.</div>
+      </div>
     </div>
 
-    <!-- Table View -->
-    <div id="panelTable" style="display:none;">
-      <table>
-        <thead><tr><th>Students</th><th>Type</th><th>Similarity</th><th>Status</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-      <div class="empty" id="emptyState" style="display:none;">No student pairs match the current filter criteria.</div>
-    </div>
-  </div>
-</main>
+  </main>
+</div>
 
+<!-- Upload ZIP Modal -->
 <div class="scrim" id="uploadScrim"></div>
 <div class="modal" id="uploadModal">
   <h3>Run a comparison from ZIP</h3>
-  <div class="field"><label>Cohort Name</label><input type="text" id="fCohortLabel" placeholder="KAIM Batch 7"></div>
+  <div class="field"><label>Cohort Name</label><input type="text" id="fCohortLabel" placeholder="KAIM Batch 8"></div>
   <div class="field"><label>Week / Batch Label</label><input type="text" id="fBatchLabel" placeholder="Week 5"></div>
   <div class="field"><label>Submission Mode</label>
     <select id="fMode">
@@ -351,6 +497,7 @@
   </div>
 </div>
 
+<!-- Fetch Modal -->
 <div class="modal" id="fetchModal">
   <h3 id="fetchTitle">Fetch & Compare</h3>
   <p style="color:var(--muted); font-size:13.5px; margin-bottom:20px;">This will automatically fetch all submitted GitHub or Google Doc links and run the comparison.</p>
@@ -367,6 +514,7 @@
   </div>
 </div>
 
+<!-- Side-by-Side Diff Drawer -->
 <div class="scrim" id="drawerScrim"></div>
 <div class="drawer" id="drawer">
   <div class="drawer-header">
@@ -386,7 +534,7 @@
     <div class="diff-pane" id="diffPaneA">
       <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between;">
         <span id="diffStudentA" style="font-weight: 700;">Student A</span>
-        <select id="diffSelectA" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; max-width: 240px; outline: none; cursor: pointer;"></select>
+        <select id="diffSelectA" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; max-width: 240px; outline: none; cursor: pointer;"></select>
       </div>
       <pre id="diffContentA"></pre>
       <div class="diff-minimap" id="minimapA"></div>
@@ -394,7 +542,7 @@
     <div class="diff-pane" id="diffPaneB">
       <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between;">
         <span id="diffStudentB" style="font-weight: 700;">Student B</span>
-        <select id="diffSelectB" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; max-width: 240px; outline: none; cursor: pointer;"></select>
+        <select id="diffSelectB" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 11px; font-family: 'IBM Plex Mono', monospace; max-width: 240px; outline: none; cursor: pointer;"></select>
       </div>
       <pre id="diffContentB"></pre>
       <div class="diff-minimap" id="minimapB"></div>
@@ -416,6 +564,12 @@ let state = {
   userSelectedPanel: false
 };
 
+function updateSidebarActive(navId) {
+  document.querySelectorAll('.sidebar-nav .nav-item').forEach(el => el.classList.remove('active'));
+  const target = document.getElementById(navId);
+  if (target) target.classList.add('active');
+}
+
 function setView(id){
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -431,11 +585,14 @@ function renderCrumbs(){
 
 async function goHome(){
   state.cohortId = null; state.batchId = null; state.cohortLabel = null; state.batchLabel = null;
+  updateSidebarActive('navHome');
   renderCrumbs(); setView('viewCohorts');
   await loadCohorts(); renderCohortGrid();
 }
+
 async function goBatches(){
   state.batchId = null; state.batchLabel = null;
+  updateSidebarActive('navModule');
   await loadCohorts();
   if(state.cohorts[state.cohortId]){
     renderCrumbs(); setView('viewBatches'); renderBatchList();
@@ -445,6 +602,45 @@ async function goBatches(){
   }
 }
 document.getElementById('brandHome').addEventListener('click', goHome);
+
+function triggerMatrixNav() {
+  updateSidebarActive('navLeaderboard');
+  if (state.batchId) {
+    state.panel = 'matrix';
+    state.userSelectedPanel = true;
+    updatePanelButtons();
+    setView('viewResults');
+    renderActivePanel();
+  } else {
+    alert("Please select a cohort and batch to view the Matrix Heatmap.");
+  }
+}
+
+function triggerClustersNav() {
+  updateSidebarActive('navAssignment');
+  if (state.batchId) {
+    state.panel = 'clusters';
+    state.userSelectedPanel = true;
+    updatePanelButtons();
+    setView('viewResults');
+    renderActivePanel();
+  } else {
+    alert("Please select a cohort and batch to view Similarity Clusters.");
+  }
+}
+
+function triggerTableNav() {
+  updateSidebarActive('navPeerGrading');
+  if (state.batchId) {
+    state.panel = 'table';
+    state.userSelectedPanel = true;
+    updatePanelButtons();
+    setView('viewResults');
+    renderActivePanel();
+  } else {
+    alert("Please select a cohort and batch to view the Data Table.");
+  }
+}
 
 async function loadCohorts(){
   try {
@@ -456,12 +652,25 @@ async function loadCohorts(){
 }
 
 function renderCohortGrid(){
+  // Defer so the container has a measured width
+  requestAnimationFrame(() => _drawOrbit());
+}
+function _drawOrbit(){
   const svg = d3.select('#orbitGraph');
   svg.selectAll('*').remove();
   const wrap = document.getElementById('orbitWrap');
-  const width = wrap.clientWidth || 1200;
+  const width = Math.max(wrap.clientWidth, 800);
   const height = 520;
   svg.attr('viewBox', `0 0 ${width} ${height}`);
+
+  // Explicit hex colors — CSS vars don't work inside SVG presentation attributes
+  const COLOR_HIGH      = '#DC2626';
+  const COLOR_HIGH_BG   = '#FEF2F2';
+  const COLOR_OK        = '#059669';
+  const COLOR_OK_BG     = '#ECFDF5';
+  const COLOR_RING      = '#E2E8F0';
+  const COLOR_TEXT      = '#1E293B';
+  const COLOR_MUTED     = '#64748B';
 
   const ids = Object.keys(state.cohorts);
   if(ids.length === 0){
@@ -469,10 +678,9 @@ function renderCohortGrid(){
       .attr('width', width)
       .attr('height', height)
       .html(`
-        <div class="empty-cohorts-box">
-          <h3>No cohorts found</h3>
-          <p>Upload your first submissions to begin analyzing student code & reports.</p>
-          <button class="btn btn-primary" onclick="document.getElementById('openUpload').click()">Upload your first submissions</button>
+        <div xmlns="http://www.w3.org/1999/xhtml" style="background:#FFFFFF;border:2px dashed #E2E8F0;border-radius:14px;padding:60px 20px;text-align:center;margin-top:20px;">
+          <h3 style="font-size:18px;font-weight:700;margin:0 0 8px;color:#1E293B;">No cohorts found</h3>
+          <p style="color:#64748B;font-size:14px;margin:0 0 20px;">Upload your first submissions to begin analyzing student code &amp; reports.</p>
         </div>
       `);
     return;
@@ -487,18 +695,23 @@ function renderCohortGrid(){
   });
 
   const maxStudents = Math.max(1, ...cohorts.map(c => c.students));
-  const radius = d3.scaleSqrt().domain([0, maxStudents]).range([18, 52]);
+  const radius = d3.scaleSqrt().domain([0, maxStudents]).range([22, 58]);
   const cx = width / 2, cy = height / 2;
-  const orbitR = Math.min(width/2, height/2) - 100;
+  const orbitR = Math.min(width/2, height/2) - 110;
 
   const defs = svg.append('defs');
   const glow = defs.append('filter').attr('id','nodeGlow').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');
-  glow.append('feGaussianBlur').attr('stdDeviation', 4).attr('result','blur');
+  glow.append('feGaussianBlur').attr('stdDeviation', 5).attr('result','blur');
   glow.append('feMerge').selectAll('feMergeNode').data(['blur','SourceGraphic']).join('feMergeNode').attr('in', d=>d);
 
-  svg.append('g').selectAll('circle').data([0.45, 0.75, 1]).join('circle')
-    .attr('cx', cx).attr('cy', cy).attr('r', d => d*orbitR)
-    .attr('fill','none').attr('stroke', 'var(--line)').attr('stroke-width', 1.5).attr('stroke-dasharray', '4 4');
+  // Orbit rings
+  svg.append('g').selectAll('circle').data([0.4, 0.7, 1]).join('circle')
+    .attr('cx', cx).attr('cy', cy)
+    .attr('r', d => d * orbitR)
+    .attr('fill','none')
+    .attr('stroke', COLOR_RING)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-dasharray', '5 5');
 
   cohorts.forEach((c, i) => {
     if(i === 0){ c.x = cx; c.y = cy; }
@@ -515,16 +728,44 @@ function renderCohortGrid(){
     .attr('class','cohort-node')
     .attr('transform', d => `translate(${d.x},${d.y})`);
 
+  // Outer glow ring
+  node.append('circle')
+    .attr('r', d => radius(d.students) + 8)
+    .attr('fill', d => d.flagged > 0 ? COLOR_HIGH_BG : COLOR_OK_BG)
+    .attr('stroke', 'none')
+    .attr('opacity', 0.6);
+
+  // Main node circle
   node.append('circle').attr('class','core')
     .attr('r', d => radius(d.students))
-    .attr('fill', d => d.flagged > 0 ? 'var(--high-bg)' : 'var(--ok-bg)')
-    .attr('stroke', d => d.flagged > 0 ? 'var(--high)' : 'var(--ok)')
-    .attr('stroke-width', 2);
+    .attr('fill', d => d.flagged > 0 ? COLOR_HIGH_BG : COLOR_OK_BG)
+    .attr('stroke', d => d.flagged > 0 ? COLOR_HIGH : COLOR_OK)
+    .attr('stroke-width', 2.5);
 
-  node.append('circle').attr('r', 4).attr('fill', d => d.flagged > 0 ? 'var(--high)' : 'var(--ok)');
+  // Center dot
+  node.append('circle')
+    .attr('r', 5)
+    .attr('fill', d => d.flagged > 0 ? COLOR_HIGH : COLOR_OK);
 
-  node.append('text').attr('class','lbl-name').attr('y', d => radius(d.students) + 20).text(d => d.label);
-  node.append('text').attr('class','lbl-meta').attr('y', d => radius(d.students) + 36)
+  // Label: cohort name
+  node.append('text')
+    .attr('class','lbl-name')
+    .attr('y', d => radius(d.students) + 22)
+    .attr('fill', COLOR_TEXT)
+    .attr('font-family', 'Inter, sans-serif')
+    .attr('font-weight', '700')
+    .attr('font-size', '13px')
+    .attr('text-anchor', 'middle')
+    .text(d => d.label);
+
+  // Label: meta stats
+  node.append('text')
+    .attr('class','lbl-meta')
+    .attr('y', d => radius(d.students) + 38)
+    .attr('fill', COLOR_MUTED)
+    .attr('font-family', 'Inter, sans-serif')
+    .attr('font-size', '11px')
+    .attr('text-anchor', 'middle')
     .text(d => `${d.students} students · ${d.flagged} flagged`);
 
   node.on('mouseenter', function(e, d){
@@ -547,7 +788,7 @@ function renderBatchList(){
   const c = state.cohorts[state.cohortId];
   if(!c) return;
   const ids = Object.keys(c.batches);
-  if(ids.length === 0){ list.innerHTML = '<div class="empty-cohorts-box">No batches found for this cohort.</div>'; return; }
+  if(ids.length === 0){ list.innerHTML = '<div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:30px;text-align:center;color:var(--muted);">No batches found for this cohort.</div>'; return; }
   list.innerHTML = '';
   ids.forEach(bid => {
     const b = c.batches[bid];
@@ -555,8 +796,7 @@ function renderBatchList(){
     row.className = 'batch-row';
     
     if (b.studentCount === 0 && b.collectedCount > 0) {
-      // Un-analyzed collected submissions
-      row.innerHTML = `<div><div class="name">${b.label}</div><div class="meta">${b.collectedCount} submissions collected (Not analyzed)</div></div><div class="flag" style="background:var(--surface-2);color:var(--text);border:1px solid var(--line);">Ready to Fetch</div>`;
+      row.innerHTML = `<div><div class="name">${b.label}</div><div class="meta">${b.collectedCount} submissions collected (Not analyzed)</div></div><div class="flag" style="background:var(--surface-3);color:var(--text-dark);border:1px solid var(--line);">Ready to Fetch</div>`;
       row.addEventListener('click', () => {
         document.getElementById('fetchModal').classList.add('open');
         document.getElementById('uploadScrim').classList.add('open');
@@ -564,7 +804,6 @@ function renderBatchList(){
         state.batchId = bid; state.batchLabel = b.label;
       });
     } else {
-      // Analyzed batch
       row.innerHTML = `<div><div class="name">${b.label}</div><div class="meta">${b.studentCount} students compared</div></div><div class="flag">${b.flaggedCount} flagged</div>`;
       row.addEventListener('click', async () => {
         state.batchId = bid; state.batchLabel = b.label;
@@ -580,9 +819,7 @@ async function loadBatch(){
   const res = await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}`);
   state.batch = await res.json();
   
-  // Smart Density Check
   checkDensityAndAutoSwitch();
-  
   renderResultsStats(); 
   renderActivePanel();
 }
@@ -658,9 +895,7 @@ function renderResultsStats(){
 
 function scoreClass(s){ return s>=90?'high':s>=60?'med':'ok'; }
 
-/* =========================================================
-   Fix 1: Small Multiples Connected Component Cluster Grid
-   ========================================================= */
+/* Small Multiples Cluster Grid */
 function renderSmallMultiples(){
   const grid = document.getElementById('clustersGrid');
   grid.innerHTML = '';
@@ -680,7 +915,6 @@ function renderSmallMultiples(){
     return;
   }
 
-  // 1. Build Adjacency Graph
   const adj = new Map();
   const degrees = new Map();
   filteredPairs.forEach(p => {
@@ -692,7 +926,6 @@ function renderSmallMultiples(){
     degrees.set(p.b, (degrees.get(p.b) || 0) + 1);
   });
 
-  // 2. Compute Connected Components (BFS)
   const visited = new Set();
   const components = [];
 
@@ -731,7 +964,6 @@ function renderSmallMultiples(){
 
   components.sort((a, b) => b.maxSim - a.maxSim);
 
-  // 3. Render Each Component Card with Small D3 Simulation + Hulls + Scale Dots
   components.forEach(comp => {
     const card = document.createElement('div');
     card.className = 'cluster-card';
@@ -743,7 +975,7 @@ function renderSmallMultiples(){
         <div class="cluster-card-title">Cluster #${comp.id} (${comp.nodes.length} Students)</div>
         <div class="cluster-card-badge ${maxBadgeClass}">Max ${comp.maxSim}%</div>
       </div>
-      <svg class="cluster-svg" id="cluster-svg-${comp.id}" style="background: radial-gradient(circle at center, var(--surface-2) 0%, var(--bg) 100%);"></svg>
+      <svg class="cluster-svg" id="cluster-svg-${comp.id}" style="background: radial-gradient(circle at center, #FFFFFF 0%, #F8FAFC 100%); border: 1px solid var(--line);"></svg>
     `;
     grid.appendChild(card);
 
@@ -752,7 +984,6 @@ function renderSmallMultiples(){
     const height = 210;
     svg.attr('viewBox', `0 0 ${width} ${height}`);
 
-    // Render scale context dots (unflagged students for scale)
     const totalStudents = state.batch.studentCount || 0;
     const unflaggedCount = Math.max(0, Math.min(15, totalStudents - comp.nodes.length));
     const bgDots = [];
@@ -766,9 +997,9 @@ function renderSmallMultiples(){
     svg.append('g').selectAll('circle')
       .data(bgDots).join('circle')
       .attr('cx', d => d.x).attr('cy', d => d.y)
-      .attr('r', 2)
+      .attr('r', 2.5)
       .attr('fill', 'var(--faint)')
-      .attr('opacity', 0.25);
+      .attr('opacity', 0.4);
 
     const nodesData = comp.nodes.map(id => ({ id, degree: degrees.get(id) || 1 }));
     const linksData = comp.pairs.map(p => ({ source: p.a, target: p.b, value: p.similarity, pair: p }));
@@ -779,11 +1010,10 @@ function renderSmallMultiples(){
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collide', d3.forceCollide(28));
 
-    // Hull path element behind links/nodes
     const hullGroup = svg.append('g').attr('class', 'hull-group');
     const hullPath = hullGroup.append('path')
-      .attr('fill', comp.maxSim >= 90 ? 'rgba(214, 69, 69, 0.08)' : 'rgba(217, 164, 65, 0.08)')
-      .attr('stroke', comp.maxSim >= 90 ? 'rgba(214, 69, 69, 0.2)' : 'rgba(217, 164, 65, 0.2)')
+      .attr('fill', comp.maxSim >= 90 ? 'rgba(220, 38, 38, 0.08)' : 'rgba(217, 119, 6, 0.08)')
+      .attr('stroke', comp.maxSim >= 90 ? 'rgba(220, 38, 38, 0.25)' : 'rgba(217, 119, 6, 0.25)')
       .attr('stroke-width', 1.5)
       .attr('stroke-linejoin', 'round');
 
@@ -803,7 +1033,6 @@ function renderSmallMultiples(){
         .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
         .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-    // Size node circle based on degree
     node.append('circle')
       .attr('r', d => 12 + Math.min(10, d.degree * 3))
       .attr('fill', 'var(--surface)')
@@ -813,7 +1042,8 @@ function renderSmallMultiples(){
     node.append('text')
       .attr('font-family', 'IBM Plex Mono, monospace')
       .attr('font-size', '10px')
-      .attr('fill', 'var(--text)')
+      .attr('font-weight', '600')
+      .attr('fill', 'var(--text-dark)')
       .attr('text-anchor', 'middle')
       .attr('dy', d => 24 + Math.min(10, d.degree * 3))
       .text(d => d.id);
@@ -823,10 +1053,9 @@ function renderSmallMultiples(){
       if (matchPair) openDrawer(matchPair);
     });
 
-    // Hover dimming
     card.addEventListener('mouseenter', () => {
       document.querySelectorAll('.cluster-card').forEach(c => {
-        if (c !== card) c.style.opacity = '0.4';
+        if (c !== card) c.style.opacity = '0.5';
       });
     });
     card.addEventListener('mouseleave', () => {
@@ -841,7 +1070,6 @@ function renderSmallMultiples(){
         d.y = Math.max(25, Math.min(height - 35, d.y));
       });
 
-      // Curved link paths
       link.attr('d', d => {
         const dx = d.target.x - d.source.x;
         const dy = d.target.y - d.source.y;
@@ -851,7 +1079,6 @@ function renderSmallMultiples(){
 
       node.attr('transform', d => `translate(${d.x},${d.y})`);
 
-      // Compute convex hull around nodes if >= 3 nodes
       if (nodesData.length >= 3) {
         const points = nodesData.map(d => [d.x, d.y]);
         const hull = d3.polygonHull(points);
@@ -859,7 +1086,6 @@ function renderSmallMultiples(){
           hullPath.attr('d', `M${hull.join('L')}Z`);
         }
       } else if (nodesData.length === 2) {
-        // Enclosing pill shape for 2 nodes
         const [n1, n2] = nodesData;
         hullPath.attr('d', `M${n1.x - 15},${n1.y - 15} L${n2.x + 15},${n2.y - 15} L${n2.x + 15},${n2.y + 15} L${n1.x - 15},${n1.y + 15} Z`);
       }
@@ -867,9 +1093,7 @@ function renderSmallMultiples(){
   });
 }
 
-/* =========================================================
-   Fix 2: Matrix View Layout for High Density Scaling
-   ========================================================= */
+/* Matrix Heatmap View */
 function renderMatrixView(){
   const svg = d3.select('#matrixSvg');
   svg.selectAll('*').remove();
@@ -878,7 +1102,6 @@ function renderMatrixView(){
   if (!state.batch || !state.batch.pairs) return;
 
   const q = (document.getElementById('search').value || '').toLowerCase();
-  // Include all pairs for the matrix view so the heatmap forms a complete grid
   const allBatchPairs = state.batch.pairs.filter(p =>
     (state.activeType==='all' || p.type===state.activeType) &&
     (p.a.toLowerCase().includes(q) || p.b.toLowerCase().includes(q))
@@ -889,18 +1112,15 @@ function renderMatrixView(){
     return;
   }
 
-  // Collect unique student names from all pairs or batch
   const studentSet = new Set(allBatchPairs.flatMap(p => [p.a, p.b]));
   const rawStudents = Array.from(studentSet);
 
-  // Build matrix lookup
   const pairMap = new Map();
   allBatchPairs.forEach(p => {
     pairMap.set(`${p.a}__${p.b}`, p);
     pairMap.set(`${p.b}__${p.a}`, p);
   });
 
-  // Reorder students using greedy cluster ordering so matched students sit next to each other
   const orderedStudents = [];
   const unvisited = new Set(rawStudents);
 
@@ -940,27 +1160,22 @@ function renderMatrixView(){
 
   svg.attr('width', width).attr('height', height);
 
-  // Add SVG Glow Filter definition for cell hover glow
   const defs = svg.append('defs');
   const filter = defs.append('filter')
     .attr('id', 'matrixCellGlow')
     .attr('x', '-50%').attr('y', '-50%')
     .attr('width', '200%').attr('height', '200%');
-  filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
+  filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
   const feMerge = filter.append('feMerge');
   feMerge.append('feMergeNode').attr('in', 'blur');
   feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
 
   const tooltip = document.getElementById('matrixTooltip');
-
-  // Matrix group
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-  // Hover Highlight Background Ribbons
-  const rowHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', n * cellSize).attr('height', cellSize).attr('pointer-events', 'none').attr('rx', 4);
-  const colHighlight = g.append('rect').attr('fill', 'var(--surface-2)').attr('opacity', 0).attr('width', cellSize).attr('height', n * cellSize).attr('pointer-events', 'none').attr('rx', 4);
+  const rowHighlight = g.append('rect').attr('fill', 'var(--surface-3)').attr('opacity', 0).attr('width', n * cellSize).attr('height', cellSize).attr('pointer-events', 'none').attr('rx', 4);
+  const colHighlight = g.append('rect').attr('fill', 'var(--surface-3)').attr('opacity', 0).attr('width', cellSize).attr('height', n * cellSize).attr('pointer-events', 'none').attr('rx', 4);
 
-  // Column Labels (Top)
   g.selectAll('.colLabel')
     .data(orderedStudents).join('text')
     .attr('class', 'colLabel')
@@ -970,11 +1185,10 @@ function renderMatrixView(){
     .attr('transform', (d, i) => `rotate(-45, ${i * cellSize + cellSize / 2}, -12)`)
     .attr('font-family', 'IBM Plex Mono, monospace')
     .attr('font-size', '11.5px')
-    .attr('fill', 'var(--text)')
+    .attr('fill', 'var(--text-dark)')
     .attr('cursor', 'pointer')
     .text(d => d);
 
-  // Row Labels (Left)
   g.selectAll('.rowLabel')
     .data(orderedStudents).join('text')
     .attr('class', 'rowLabel')
@@ -983,18 +1197,16 @@ function renderMatrixView(){
     .attr('text-anchor', 'end')
     .attr('font-family', 'IBM Plex Mono, monospace')
     .attr('font-size', '11.5px')
-    .attr('fill', 'var(--text)')
+    .attr('fill', 'var(--text-dark)')
     .attr('cursor', 'pointer')
     .text(d => d);
 
-  // Requirement 1 Color Scale: Visible soft sage green -> warm amber -> vivid red-orange
   const getMatrixColor = (sim) => {
-    if (sim >= 85) return d3.interpolateRgb('#d99b26', '#ff3b30')((sim - 85) / 15);
-    if (sim >= 40) return d3.interpolateRgb('#3f6b4e', '#d99b26')((sim - 40) / 45);
-    return d3.interpolateRgb('#2b4736', '#3f6b4e')(sim / 40);
+    if (sim >= 85) return d3.interpolateRgb('#D97706', '#E31B23')((sim - 85) / 15);
+    if (sim >= 35) return d3.interpolateRgb('#CBD5E1', '#D97706')((sim - 35) / 50);
+    return d3.interpolateRgb('#F1F5F9', '#CBD5E1')(sim / 35);
   };
 
-  // Pre-calculate per-student statistics for the marginal chart
   const studentStats = orderedStudents.map(s => {
     let maxSim = 0;
     let flagCount = 0;
@@ -1010,7 +1222,6 @@ function renderMatrixView(){
     return { maxSim, flagCount };
   });
 
-  // Render Grid Cells with requirement 2: 1px visible border structure
   const cellsGroup = g.append('g');
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
@@ -1025,15 +1236,14 @@ function renderMatrixView(){
         .attr('rx', 4);
 
       if (i === j) {
-        // Diagonal self-cell (Requirement 2: distinct, subtle 1px border)
-        cell.attr('fill', 'var(--surface-2)')
-          .attr('fill-opacity', 0.5)
+        cell.attr('fill', 'var(--surface-3)')
+          .attr('fill-opacity', 0.8)
           .attr('stroke', 'var(--line)')
           .attr('stroke-width', 1);
 
         cell.on('mouseenter', () => {
-          rowHighlight.attr('y', i * cellSize).attr('opacity', 0.4);
-          colHighlight.attr('x', j * cellSize).attr('opacity', 0.4);
+          rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
+          colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
         }).on('mouseleave', () => {
           rowHighlight.attr('opacity', 0);
           colHighlight.attr('opacity', 0);
@@ -1045,44 +1255,39 @@ function renderMatrixView(){
           const isOverThreshold = sim >= state.threshold;
           const cellColor = getMatrixColor(sim);
 
-          // Requirement 1 & 2: Visible color fill + crisp 1px grid border
           cell.attr('fill', cellColor)
-            .attr('fill-opacity', isOverThreshold ? 0.95 : 0.85)
-            .attr('stroke', isOverThreshold ? (sim >= 85 ? '#ff3b30' : '#d99b26') : 'var(--line)')
+            .attr('fill-opacity', isOverThreshold ? 1.0 : 0.85)
+            .attr('stroke', isOverThreshold ? (sim >= 85 ? '#E31B23' : '#D97706') : 'var(--line)')
             .attr('stroke-width', isOverThreshold ? 1.5 : 1)
             .style('cursor', 'pointer');
 
-          // Requirement 6 & 7: Scale-up, soft glow filter, rich tooltip, and drawer trigger
           cell.on('mouseenter', function(e) {
-              rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
-              colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
+              rowHighlight.attr('y', i * cellSize).attr('opacity', 0.6);
+              colHighlight.attr('x', j * cellSize).attr('opacity', 0.6);
               
-              // Highlight row & column text labels
               svg.selectAll('.rowLabel').filter((d, idx) => idx === i).attr('fill', 'var(--primary)').attr('font-weight', '700');
               svg.selectAll('.colLabel').filter((d, idx) => idx === j).attr('fill', 'var(--primary)').attr('font-weight', '700');
 
-              // Lift cell and apply glow filter
               d3.select(this)
                 .raise()
-                .attr('stroke', '#ffffff')
+                .attr('stroke', '#E31B23')
                 .attr('stroke-width', 2.5)
                 .style('filter', 'url(#matrixCellGlow)');
 
-              // Highlight marginal chart bar
-              barGroup.selectAll(`.bar-${i}`).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
+              barGroup.selectAll(`.bar-${i}`).attr('stroke', '#E31B23').attr('stroke-width', 1.5);
 
               tooltip.style.opacity = 1;
               tooltip.innerHTML = `
-                <div style="font-weight: 700; font-size: 13px; color: var(--text); padding-bottom: 4px; border-bottom: 1px solid var(--line); margin-bottom: 6px;">${s1} ↔ ${s2}</div>
+                <div style="font-weight: 700; font-size: 13px; color: #FFFFFF; padding-bottom: 4px; border-bottom: 1px solid var(--muted); margin-bottom: 6px;">${s1} ↔ ${s2}</div>
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px;">
-                  <span style="font-size: 12px; color: var(--muted);">Similarity Score:</span>
-                  <span style="font-size: 13px; font-weight: 800; color: ${getMatrixColor(sim)}; font-family: 'IBM Plex Mono', monospace;">${sim}%</span>
+                  <span style="font-size: 12px; color: var(--faint);">Similarity Score:</span>
+                  <span style="font-size: 13px; font-weight: 800; color: #F59E0B; font-family: 'IBM Plex Mono', monospace;">${sim}%</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px;">
-                  <span style="font-size: 11.5px; color: var(--muted);">Type:</span>
-                  <span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text);">${pair.type}</span>
+                  <span style="font-size: 11.5px; color: var(--faint);">Type:</span>
+                  <span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.2); color: #FFFFFF;">${pair.type}</span>
                 </div>
-                <div style="font-size: 11px; color: var(--primary); font-weight: 600; text-align: center; margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--line);">
+                <div style="font-size: 11px; color: #38BDF8; font-weight: 600; text-align: center; margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--muted);">
                   ⚡ Click cell to open side-by-side diff
                 </div>`;
             })
@@ -1095,11 +1300,11 @@ function renderMatrixView(){
               tooltip.style.opacity = 0; 
               rowHighlight.attr('opacity', 0);
               colHighlight.attr('opacity', 0);
-              svg.selectAll('.rowLabel').attr('fill', 'var(--text)').attr('font-weight', '400');
-              svg.selectAll('.colLabel').attr('fill', 'var(--text)').attr('font-weight', '400');
+              svg.selectAll('.rowLabel').attr('fill', 'var(--text-dark)').attr('font-weight', '400');
+              svg.selectAll('.colLabel').attr('fill', 'var(--text-dark)').attr('font-weight', '400');
 
               d3.select(this)
-                .attr('stroke', isOverThreshold ? (sim >= 85 ? '#ff3b30' : '#d99b26') : 'var(--line)')
+                .attr('stroke', isOverThreshold ? (sim >= 85 ? '#E31B23' : '#D97706') : 'var(--line)')
                 .attr('stroke-width', isOverThreshold ? 1.5 : 1)
                 .style('filter', 'none');
 
@@ -1107,7 +1312,6 @@ function renderMatrixView(){
             })
             .on('click', () => openDrawer(pair));
         } else {
-          // Empty / baseline cell (Requirement 1 & 2: visible sage baseline fill + 1px border)
           const baseColor = getMatrixColor(0);
           cell.attr('fill', baseColor)
             .attr('fill-opacity', 0.8)
@@ -1115,8 +1319,8 @@ function renderMatrixView(){
             .attr('stroke-width', 1);
 
           cell.on('mouseenter', () => {
-            rowHighlight.attr('y', i * cellSize).attr('opacity', 0.4);
-            colHighlight.attr('x', j * cellSize).attr('opacity', 0.4);
+            rowHighlight.attr('y', i * cellSize).attr('opacity', 0.5);
+            colHighlight.attr('x', j * cellSize).attr('opacity', 0.5);
           }).on('mouseleave', () => {
             rowHighlight.attr('opacity', 0);
             colHighlight.attr('opacity', 0);
@@ -1126,11 +1330,9 @@ function renderMatrixView(){
     }
   }
 
-  // Requirement 4: Redesigned Marginal "Max Similarity & Flags" Bar Chart
   const barScale = d3.scaleLinear().domain([0, 100]).range([0, 110]);
   const barGroup = g.append('g').attr('transform', `translate(${n * cellSize + 24}, 0)`);
   
-  // Bar Chart Header
   barGroup.append('text')
     .attr('x', 0).attr('y', -12)
     .attr('font-size', '11.5px')
@@ -1144,7 +1346,6 @@ function renderMatrixView(){
     const barWidth = barScale(stats.maxSim);
     const barColor = getMatrixColor(stats.maxSim);
 
-    // Rounded Bar
     barGroup.append('rect')
       .attr('class', `bar-${i}`)
       .attr('x', 0).attr('y', i * cellSize + 4)
@@ -1155,14 +1356,13 @@ function renderMatrixView(){
       .attr('fill-opacity', 0.9)
       .attr('cursor', 'pointer');
 
-    // Value Badge Text
     barGroup.append('text')
       .attr('x', Math.max(6, barWidth) + 8)
       .attr('y', i * cellSize + cellSize / 2 + 4)
       .attr('font-size', '11px')
       .attr('font-family', 'IBM Plex Mono, monospace')
       .attr('font-weight', '600')
-      .attr('fill', stats.maxSim >= 50 ? 'var(--text)' : 'var(--muted)')
+      .attr('fill', stats.maxSim >= 50 ? 'var(--text-dark)' : 'var(--muted)')
       .text(`${stats.maxSim}% ${stats.flagCount > 0 ? `(${stats.flagCount} flag${stats.flagCount > 1 ? 's' : ''})` : ''}`);
   });
 }
@@ -1212,7 +1412,6 @@ document.getElementById('thresholdSlider').addEventListener('input', function(){
   state.threshold = +this.value;
   document.getElementById('sliderVal').textContent = this.value + '%';
   
-  // Sync chip active states
   document.querySelectorAll('.sim-chip').forEach(chip => {
     if (+chip.dataset.threshold === state.threshold) chip.classList.add('active');
     else chip.classList.remove('active');
@@ -1340,38 +1539,51 @@ function renderDiffPane(side, content, matches, startKey, endKey) {
 
   if (!content) return;
 
+  const MAX_LINES = 5000;
   const lines = content.split('\n');
   const totalLines = lines.length;
+  const renderLines = lines.slice(0, MAX_LINES);
 
-  lines.forEach((lineText, idx) => {
+  const activeLines = new Set();
+  const matchedLines = new Set();
+  matches.forEach((m, mIdx) => {
+    const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
+    if (!s) return;
+    const len = m.length || 1;
+    const e = m[endKey] || (s + len - 1);
+    for (let ln = s; ln <= Math.min(e, MAX_LINES); ln++) {
+      matchedLines.add(ln);
+      if (mIdx === activeMatchIdx) activeLines.add(ln);
+    }
+  });
+
+  const frag = document.createDocumentFragment();
+  renderLines.forEach((lineText, idx) => {
     const lineNum = idx + 1;
     const span = document.createElement('span');
     span.className = 'line';
     span.id = `${side.toLowerCase()}-line-${lineNum}`;
 
-    let isMatched = false;
-    let isActiveMatch = false;
-
-    matches.forEach((m, mIdx) => {
-      const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
-      const len = m.length || 1;
-      const e = m[endKey] || (s + len - 1);
-
-      if (lineNum >= s && lineNum <= e) {
-        isMatched = true;
-        if (mIdx === activeMatchIdx) isActiveMatch = true;
-      }
-    });
-
-    if (isActiveMatch) span.classList.add('match-active');
-    else if (isMatched) span.classList.add('match-other');
+    if (activeLines.has(lineNum)) span.classList.add('match-active');
+    else if (matchedLines.has(lineNum)) span.classList.add('match-other');
 
     span.textContent = lineText;
-    pre.appendChild(span);
+    frag.appendChild(span);
   });
 
-  // Render Minimap
+  if (totalLines > MAX_LINES) {
+    const note = document.createElement('span');
+    note.className = 'line';
+    note.style.color = 'var(--med)';
+    note.style.fontStyle = 'italic';
+    note.textContent = `… ${totalLines - MAX_LINES} more lines (truncated for display performance)`;
+    frag.appendChild(note);
+  }
+
+  pre.appendChild(frag);
+
   if (totalLines > 0) {
+    const mmFrag = document.createDocumentFragment();
     matches.forEach((m, mIdx) => {
       const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
       if (!s) return;
@@ -1379,10 +1591,10 @@ function renderDiffPane(side, content, matches, startKey, endKey) {
       const tick = document.createElement('div');
       tick.className = 'diff-minimap-tick';
       tick.style.top = `${topPct}%`;
-      if (mIdx === activeMatchIdx) tick.style.background = 'var(--high)';
-      else tick.style.background = 'var(--med)';
-      minimap.appendChild(tick);
+      tick.style.background = mIdx === activeMatchIdx ? 'var(--high)' : 'var(--med)';
+      mmFrag.appendChild(tick);
     });
+    minimap.appendChild(mmFrag);
   }
 }
 
@@ -1395,7 +1607,6 @@ function updateMatchNav() {
   nav.style.display = 'flex';
   document.getElementById('matchLabel').textContent = `Match ${activeMatchIdx + 1} / ${currentPairMatches.length}`;
 
-  // Highlight active lines across panes
   highlightActiveMatch();
 }
 
@@ -1546,6 +1757,8 @@ document.getElementById('deleteBatchBtn').addEventListener('click', async () => 
     alert("Error communicating with server.");
   }
 });
+
+function id(str){ return document.getElementById(str); }
 
 (async function boot(){
   await loadCohorts();

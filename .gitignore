@@ -5,3 +5,5 @@ __pycache__/
 backend/work/*
 !backend/work/.gitkeep
 backend/jplag/*.jar
+*.zip
+*.csv

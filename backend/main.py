@@ -14,6 +14,7 @@ build) and place it there. See README.md.
 """
 import shutil
 import zipfile
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -24,6 +25,8 @@ from jplag_runner import run_jplag, JPlagError
 from storage import Storage
 from language_detector import detect_language
 from docx_converter import convert_docx_to_txt
+from ipynb_converter import convert_ipynb_to_py
+from pdf_converter import convert_pdf_to_txt
 from fetcher import fetch_submissions
 
 BASE_DIR = Path(__file__).parent
@@ -61,7 +64,16 @@ def get_batch(cohort_id: str, batch_id: str):
     batch = storage.get_batch(cohort_id, batch_id)
     if not batch:
         raise HTTPException(404, "No results yet for this batch.")
-    return batch
+    # Strip per-pair match details from the list response — they are large (can be
+    # tens of thousands of entries for big batches) and the frontend only needs them
+    # when a specific pair is opened in the drawer, where they are returned by the
+    # /pairs/{pair_id}/files endpoint.  Omitting them here reduces a 125-student
+    # batch from ~10 MB to ~460 KB and prevents the request from timing out.
+    lightweight_pairs = [
+        {k: v for k, v in p.items() if k != "matches"}
+        for p in batch.get("pairs", [])
+    ]
+    return {**batch, "pairs": lightweight_pairs}
 
 
 @app.get("/api/cohorts/{cohort_id}/batches/{batch_id}/submissions")
@@ -118,6 +130,11 @@ def _persist_student_files(submissions_dir: Path, cohort_id: str, batch_id: str)
             shutil.copytree(student_dir, student_dest, dirs_exist_ok=True)
 
 
+def _normalize_name(name: str) -> str:
+    s = name.lower().replace("_", " ").replace("-", " ").strip()
+    return re.sub(r'\b0+(\d+)', r'\1', s)
+
+
 def _read_student_files(cohort_id: str, batch_id: str, student_name: str) -> dict:
     """Reads ALL source files submitted by a student, returning a files list and combined view."""
     batch_dir = FILES_DIR / f"{cohort_id}__{batch_id}"
@@ -126,12 +143,12 @@ def _read_student_files(cohort_id: str, batch_id: str, student_name: str) -> dic
 
     student_dir = batch_dir / student_name
     if not student_dir.exists():
-        # Flexible folder match (e.g. "student 1" vs "student_1_abebe_kebede")
-        target_norm = student_name.lower().replace("_", " ").strip()
+        # Flexible folder match (e.g. "student 1" vs "student_01" vs "student_1_abebe_kebede")
+        target_norm = _normalize_name(student_name)
         matched = None
         for folder in batch_dir.iterdir():
             if folder.is_dir():
-                folder_norm = folder.name.lower().replace("_", " ").strip()
+                folder_norm = _normalize_name(folder.name)
                 if folder_norm == target_norm or folder_norm in target_norm or target_norm in folder_norm:
                     matched = folder
                     break
@@ -204,7 +221,7 @@ def clean_submissions_directory(submissions_dir: Path, mode: str):
     Cleans up submissions directory based on mode:
     - ALWAYS deletes all README*, license*, changelog*, .md, .markdown, .rst files.
     - If mode == 'code': Also deletes non-code text/doc/pdf files so JPlag compares source code only.
-    - If mode == 'report': Also deletes all programming files, configs, scripts, leaving only main reports.
+    - If mode == 'report': Deletes programming files, configs, scripts, and remaining binary files (.docx, .pdf, images), ensuring only valid plain text files remain.
     """
     for file_path in list(submissions_dir.rglob("*")):
         if not file_path.is_file():
@@ -228,12 +245,28 @@ def clean_submissions_directory(submissions_dir: Path, mode: str):
                 except Exception:
                     pass
         elif mode == "report":
-            # In report mode, remove programming source code and dev/config files
-            if suffix in [".py", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".go", ".rs", ".php", ".pyc", ".json", ".yml", ".yaml", ".xml", ".sh", ".bash", ".sql"]:
+            # In report mode, remove programming files, dev/config files, AND binary documents/media
+            binary_and_code_exts = [
+                ".py", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".js", ".ts", ".jsx", ".tsx",
+                ".html", ".css", ".go", ".rs", ".php", ".pyc", ".json", ".yml", ".yaml", ".xml",
+                ".sh", ".bash", ".sql", ".docx", ".doc", ".pdf", ".rtf", ".odt", ".png", ".jpg",
+                ".jpeg", ".gif", ".zip", ".tar", ".gz", ".7z", ".rar", ".exe", ".bin"
+            ]
+            if suffix in binary_and_code_exts:
                 try:
                     file_path.unlink()
                 except Exception:
                     pass
+                continue
+
+            # Verify that any remaining text file is valid text and not corrupted binary
+            try:
+                with open(file_path, "rb") as f:
+                    sample = f.read(2048)
+                if b"\x00" in sample or sample.startswith(b"%PDF"):
+                    file_path.unlink()
+            except Exception:
+                pass
 
 
 @app.post("/api/run")
@@ -282,8 +315,11 @@ async def run_comparison(
             f"one folder per student inside the zip.",
         )
 
-    # Convert DOCX reports if present
+    # Convert DOCX, IPYNB, and PDF files if present
     convert_docx_to_txt(submissions_dir)
+    convert_ipynb_to_py(submissions_dir)
+    convert_pdf_to_txt(submissions_dir)
+    _persist_student_files(submissions_dir, cohort_id, batch_id)
     clean_submissions_directory(submissions_dir, mode)
 
     if mode == "report":
@@ -335,8 +371,11 @@ async def run_fetched_comparison(
             f"Successfully fetched {fetch_result['success_count']} folders, but need at least 2 to compare. Errors: {fetch_result['errors']}"
         )
 
-    # Convert DOCX reports if present
+    # Convert DOCX, IPYNB, and PDF files if present
     convert_docx_to_txt(submissions_dir)
+    convert_ipynb_to_py(submissions_dir)
+    convert_pdf_to_txt(submissions_dir)
+    _persist_student_files(submissions_dir, cohort_id, batch_id)
     clean_submissions_directory(submissions_dir, mode)
 
     if mode == "report":

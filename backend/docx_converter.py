@@ -27,5 +27,10 @@ def convert_docx_to_txt(folder: Path):
 
             txt_path = docx_file.with_suffix(".txt")
             txt_path.write_text("\n".join(full_text), encoding="utf-8")
+            try:
+                docx_file.unlink()
+            except Exception:
+                pass
         except Exception as e:
             print(f"Warning: Failed to convert {docx_file}: {e}")
+
