@@ -7,6 +7,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="d3.min.js"></script>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "./three.module.min.js",
+      "three/addons/": "./"
+    }
+  }
+</script>
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/OrbitControls.js';
+  window.THREE = THREE;
+  window.OrbitControls = OrbitControls;
+</script>
 <style>
   :root {
     --bg: #F4F6F8;
@@ -288,8 +302,10 @@
   .run-status { font-size: 13px; color: var(--muted); margin-top: 14px; min-height: 18px; font-weight: 500; }
 
   /* Diff Drawer */
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 90vw; max-width: 1200px; background: #FFFFFF; border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .25s ease; z-index: 52; overflow-y: auto; padding: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.15); display: flex; flex-direction: column; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 90vw; max-width: 1200px; background: #FFFFFF; border-left: 1px solid var(--line); transform: translateX(100%); transition: transform .25s ease, width .2s ease; z-index: 52; overflow-y: auto; padding: 0; box-shadow: -10px 0 30px rgba(0,0,0,0.15); display: flex; flex-direction: column; }
   .drawer.open { transform: translateX(0); }
+  .drawer.side-panel { width: 540px; max-width: 48vw; }
+  .scrim.non-blocking { background: transparent !important; pointer-events: none !important; backdrop-filter: none !important; }
   .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; }
   .drawer-header h2 { font-weight: 800; font-size: 17px; margin: 0; color: var(--text-dark); }
   .drawer-header .sub { color: var(--muted); font-size: 12.5px; font-weight: 500; }
@@ -335,9 +351,13 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         Refresh
       </button>
-      <button class="btn btn-primary" id="openUpload">
+      <button class="btn btn-primary" id="openCsvUpload" style="background: #0F172A; color: #FFFFFF;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Upload CSV Export
+      </button>
+      <button class="btn" id="openUpload">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-        Run comparison
+        Run ZIP
       </button>
     </div>
   </div>
@@ -354,17 +374,10 @@
 
       <div class="overview-head">
         <h2>Cohorts Observatory</h2>
-        <p>Student cohorts organized by analysis history. Click a cohort node to inspect its weekly batches.</p>
+        <p>Student cohorts organized by analysis history. Click a cohort row to inspect its weekly batches.</p>
       </div>
 
       <div class="orbit-wrap" id="orbitWrap" style="min-height: 560px;">
-        <div class="orbit-legend">
-          <span><span class="dot" style="background:#DC2626"></span>Flagged pairs present (≥90%)</span>
-          <span><span class="dot" style="background:#059669"></span>Clean batch</span>
-          <span style="color:#94A3B8; margin-left:auto;">Node size reflects student count</span>
-        </div>
-        <svg id="orbitGraph" width="100%" height="520"></svg>
-        <div class="orbit-tooltip" id="orbitTooltip"></div>
       </div>
     </div>
 
@@ -415,10 +428,76 @@
         <button class="btn" style="margin-left: auto; color: var(--high); border-color: var(--primary-border);" id="deleteBatchBtn">Delete Comparison</button>
       </div>
 
-      <!-- Panel 1: Small Multiples Clusters -->
+      <!-- Panel 1: 3D Cluster View -->
       <div id="panelClusters">
-        <div class="clusters-grid" id="clustersGrid"></div>
-        <div class="empty" id="clustersEmpty" style="display:none;">No cluster connections match the current threshold.</div>
+        <div style="margin-bottom: 12px; font-size: 13px; color: var(--muted); display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+            <span>Drag to rotate, scroll to zoom, click a student sphere to inspect</span>
+          </div>
+          <div id="clusterFilterBadge" style="font-size: 11.5px; font-weight: 700; font-family: 'IBM Plex Mono', monospace; background: #FEF2F2; padding: 4px 10px; border-radius: 6px; color: #DC2626; border: 1px solid #FECACA;">Showing 90%+ Flagged Pairs Only</div>
+        </div>
+
+        <div id="clustersSplitWrap" style="display: flex; gap: 16px; width: 100%; height: 620px; position: relative;">
+          <!-- 3D Canvas Column -->
+          <div id="clusters3dCol" style="flex: 1; height: 100%; min-width: 280px; transition: flex 0.25s ease;">
+            <div id="cluster3dContainer" style="width: 100%; height: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; position: relative; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.03);"></div>
+          </div>
+
+          <!-- Side-by-Side Description & Diff Column (Not on top!) -->
+          <div id="clusterSidePanel" style="width: 500px; max-width: 48vw; height: 100%; display: none; background: #FFFFFF; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); flex-direction: column; overflow: hidden; z-index: 10;">
+            <div class="drawer-header" style="padding: 14px 20px;">
+              <div>
+                <h2 id="sideTitle" style="font-size: 16px;">—</h2>
+                <div class="sub" id="sideSub">—</div>
+              </div>
+              <button class="drawer-close" id="sideClose">×</button>
+            </div>
+            <div class="student-links-bar" style="display: flex; gap: 12px; padding: 8px 20px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 11.5px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 180px; display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 700; color: var(--text-dark);" id="sideLinkAName">Student A</span>
+                <span id="sideLinkABadges" style="display: inline-flex; gap: 4px;"></span>
+              </div>
+              <div style="flex: 1; min-width: 180px; display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 700; color: var(--text-dark);" id="sideLinkBName">Student B</span>
+                <span id="sideLinkBBadges" style="display: inline-flex; gap: 4px;"></span>
+              </div>
+            </div>
+            <div class="drawer-nav" style="padding: 8px 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <button id="sideMatchPrev" style="font-size: 12px; padding: 4px 8px;">◀ Prev</button>
+              <span class="nav-label" id="sideMatchLabel" style="font-size: 12px;">Match 1 / 1</span>
+              <button id="sideMatchNext" style="font-size: 12px; padding: 4px 8px;">Next ▶</button>
+              <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;" id="sideModeChipsGroup">
+                <button class="chip side-view-chip active" data-side-mode="matches" style="padding: 3px 8px; font-size: 10.5px; background: #FEF2F2; color: #DC2626; border-color: #FECACA;">Similarities 🔥</button>
+                <button class="chip side-view-chip" data-side-mode="diff" style="padding: 3px 8px; font-size: 10.5px;">Differences ⚡</button>
+                <button class="chip side-view-chip" data-side-mode="all" style="padding: 3px 8px; font-size: 10.5px;">Full File 📄</button>
+              </div>
+              <span class="nav-label" id="sideMatchLinesSummary" style="font-size: 10.5px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-left: auto;"></span>
+            </div>
+            <div class="verdict-note" id="sideNote" style="margin: 8px 20px 0; font-size: 12px; padding: 8px 12px;"></div>
+            <div class="diff-body" style="flex: 1; overflow: hidden;">
+              <div class="diff-pane" id="sidePaneA">
+                <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;">
+                  <span id="sideStudentA" style="font-weight: 700;">Student A</span>
+                  <select id="sideSelectA" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; max-width: 170px; outline: none; cursor: pointer;"></select>
+                </div>
+                <pre id="sideContentA" style="font-size: 11.5px; margin: 0; padding: 10px;"></pre>
+              </div>
+              <div class="diff-pane" id="sidePaneB">
+                <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;">
+                  <span id="sideStudentB" style="font-weight: 700;">Student B</span>
+                  <select id="sideSelectB" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; max-width: 170px; outline: none; cursor: pointer;"></select>
+                </div>
+                <pre id="sideContentB" style="font-size: 11.5px; margin: 0; padding: 10px;"></pre>
+              </div>
+            </div>
+            <div class="drawer-actions" style="padding: 10px 20px;">
+              <button class="btn btn-primary" id="sideBtnConfirm" style="font-size: 12px; padding: 6px 12px;">Confirm Plagiarism</button>
+              <button class="btn" id="sideBtnClear" style="font-size: 12px; padding: 6px 12px;">Clear / False Positive</button>
+            </div>
+          </div>
+        </div>
+        <div class="empty" id="clustersEmpty" style="display:none; margin-top: 16px;">No cluster connections match the current threshold.</div>
       </div>
 
       <!-- Panel 2: Matrix Heatmap View -->
@@ -473,6 +552,27 @@
   </main>
 </div>
 
+<!-- Upload CSV Modal -->
+<div class="modal" id="csvModal">
+  <h3>Upload 10 Academy CSV Export</h3>
+  <p style="color:var(--muted); font-size:13px; margin-bottom:16px; line-height:1.5;">Upload a standardized CSV file (e.g. <code>batch9_week11.csv</code>). The system automatically parses trainee IDs, clones GitHub repos, downloads Google Drive reports, runs JPlag comparisons, and visualizes the results.</p>
+  
+  <div class="field"><label>Cohort Name</label><input type="text" id="csvCohortLabel" placeholder="KAIM Batch 9" value="KAIM Batch 9"></div>
+  <div class="field"><label>Batch / Week Label (Optional - auto-detected from CSV if empty)</label><input type="text" id="csvBatchLabel" placeholder="Week 11 Submissions"></div>
+  
+  <div class="field">
+    <label>CSV Export File</label>
+    <div class="dropzone" id="csvDropzone"><b id="csvDzLabel">Drop a .csv export file here or click to browse</b>Supports 10 Academy export CSVs with GitHub & Google Drive links</div>
+    <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+  </div>
+  
+  <div class="run-status" id="csvRunStatus"></div>
+  <div class="modal-actions">
+    <button class="btn" id="cancelCsvUpload">Cancel</button>
+    <button class="btn btn-primary" id="submitCsvUpload" style="background:#0F172A; color:#FFFFFF;">Process CSV & Run Analysis</button>
+  </div>
+</div>
+
 <!-- Upload ZIP Modal -->
 <div class="scrim" id="uploadScrim"></div>
 <div class="modal" id="uploadModal">
@@ -522,12 +622,32 @@
       <h2 id="drawerTitle">—</h2>
       <div class="sub" id="drawerSub">—</div>
     </div>
-    <button class="drawer-close" id="drawerClose">×</button>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <button class="btn" id="drawerToggleMode" style="padding: 4px 10px; font-size: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-weight: 600; color: var(--text-dark);">Side View ◧</button>
+      <button class="drawer-close" id="drawerClose">×</button>
+    </div>
   </div>
-  <div class="drawer-nav" id="drawerNav">
-    <button id="matchPrev">◀</button>
+  <div class="student-links-bar" id="studentLinksBar" style="display: flex; gap: 16px; padding: 10px 24px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 12px; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 220px; display: flex; align-items: center; gap: 8px;">
+      <span style="font-weight: 700; color: var(--text-dark);" id="linkStudentAName">Student A</span>
+      <span id="linkStudentABadges" style="display: inline-flex; gap: 6px;"></span>
+    </div>
+    <div style="flex: 1; min-width: 220px; display: flex; align-items: center; gap: 8px;">
+      <span style="font-weight: 700; color: var(--text-dark);" id="linkStudentBName">Student B</span>
+      <span id="linkStudentBBadges" style="display: inline-flex; gap: 6px;"></span>
+    </div>
+  </div>
+  <div class="drawer-nav" id="drawerNav" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+    <button id="matchPrev">◀ Prev Match</button>
     <span class="nav-label" id="matchLabel">Match 1 / 3</span>
-    <button id="matchNext">▶</button>
+    <button id="matchNext">Next Match ▶</button>
+    <div style="display: flex; align-items: center; gap: 6px; margin-left: 12px;" id="diffViewChipsGroup">
+      <span style="font-size: 11px; font-weight: 600; color: var(--muted);">View Mode:</span>
+      <button class="chip diff-view-chip active" data-view-mode="all" style="padding: 3px 9px; font-size: 11px;">All Code</button>
+      <button class="chip diff-view-chip" data-view-mode="matches" style="padding: 3px 9px; font-size: 11px; background: #FEF2F2; color: #DC2626; border-color: #FECACA;">Similar Parts 🔥</button>
+      <button class="chip diff-view-chip" data-view-mode="diff" style="padding: 3px 9px; font-size: 11px;">Different Parts</button>
+    </div>
+    <span class="nav-label" id="matchLinesSummary" style="font-size: 11.5px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-left: auto;"></span>
   </div>
   <div class="verdict-note" id="drawerNote"></div>
   <div class="diff-body" id="diffBody">
@@ -656,130 +776,112 @@ function renderCohortGrid(){
   requestAnimationFrame(() => _drawOrbit());
 }
 function _drawOrbit(){
-  const svg = d3.select('#orbitGraph');
-  svg.selectAll('*').remove();
   const wrap = document.getElementById('orbitWrap');
-  const width = Math.max(wrap.clientWidth, 800);
-  const height = 520;
-  svg.attr('viewBox', `0 0 ${width} ${height}`);
-
-  // Explicit hex colors — CSS vars don't work inside SVG presentation attributes
-  const COLOR_HIGH      = '#DC2626';
-  const COLOR_HIGH_BG   = '#FEF2F2';
-  const COLOR_OK        = '#059669';
-  const COLOR_OK_BG     = '#ECFDF5';
-  const COLOR_RING      = '#E2E8F0';
-  const COLOR_TEXT      = '#1E293B';
-  const COLOR_MUTED     = '#64748B';
+  wrap.innerHTML = '';
+  wrap.style.minHeight = 'auto'; // Remove the fixed large height
 
   const ids = Object.keys(state.cohorts);
   if(ids.length === 0){
-    svg.append('foreignObject')
-      .attr('width', width)
-      .attr('height', height)
-      .html(`
-        <div xmlns="http://www.w3.org/1999/xhtml" style="background:#FFFFFF;border:2px dashed #E2E8F0;border-radius:14px;padding:60px 20px;text-align:center;margin-top:20px;">
-          <h3 style="font-size:18px;font-weight:700;margin:0 0 8px;color:#1E293B;">No cohorts found</h3>
-          <p style="color:#64748B;font-size:14px;margin:0 0 20px;">Upload your first submissions to begin analyzing student code &amp; reports.</p>
-        </div>
-      `);
+    wrap.innerHTML = `
+      <div style="background:#FFFFFF;border:2px dashed #E2E8F0;border-radius:14px;padding:60px 20px;text-align:center;margin-top:20px;">
+        <h3 style="font-size:18px;font-weight:700;margin:0 0 8px;color:#1E293B;">No cohorts found</h3>
+        <p style="color:#64748B;font-size:14px;margin:0 0 20px;">Upload your first submissions to begin analyzing student code &amp; reports.</p>
+      </div>`;
     return;
   }
 
-  const cohorts = ids.map(id => {
+  // Same color scale as matrix legend
+  const getMatrixColor = (sim) => {
+    if (sim >= 85) return d3.interpolateRgb('#D97706', '#E31B23')((sim - 85) / 15);
+    if (sim >= 35) return d3.interpolateRgb('#CBD5E1', '#D97706')((sim - 35) / 50);
+    return d3.interpolateRgb('#F1F5F9', '#CBD5E1')(sim / 35);
+  };
+
+  const listContainer = document.createElement('div');
+  listContainer.className = 'cohort-heat-list';
+  listContainer.style.display = 'flex';
+  listContainer.style.flexDirection = 'column';
+  listContainer.style.gap = '12px';
+  listContainer.style.marginTop = '16px';
+
+  ids.forEach(id => {
     const c = state.cohorts[id];
     const batches = Object.values(c.batches);
-    const students = Math.max(0, ...batches.map(b => b.studentCount));
-    const flagged = batches.reduce((s, b) => s + b.flaggedCount, 0);
-    return { id, label: c.label, batches: batches.length, students, flagged };
-  });
+    // Sort batches by name to maintain chronological order if they are named sequentially (e.g., Week 1, Week 2)
+    batches.sort((a, b) => a.label.localeCompare(b.label, undefined, {numeric: true}));
+    
+    const students = Math.max(0, ...batches.map(b => b.studentCount || 0));
+    const flagged = batches.reduce((s, b) => s + (b.flaggedCount || 0), 0);
 
-  const maxStudents = Math.max(1, ...cohorts.map(c => c.students));
-  const radius = d3.scaleSqrt().domain([0, maxStudents]).range([22, 58]);
-  const cx = width / 2, cy = height / 2;
-  const orbitR = Math.min(width/2, height/2) - 110;
+    const row = document.createElement('div');
+    row.className = 'cohort-heat-row';
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.justifyContent = 'space-between';
+    row.style.padding = '16px 20px';
+    row.style.background = '#FFFFFF';
+    row.style.border = '1px solid var(--line)';
+    row.style.borderRadius = '10px';
+    row.style.cursor = 'pointer';
+    row.style.transition = 'all 0.2s ease';
+    
+    row.onmouseenter = () => { row.style.borderColor = 'var(--primary)'; row.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; };
+    row.onmouseleave = () => { row.style.borderColor = 'var(--line)'; row.style.boxShadow = 'none'; };
+    row.onclick = () => { state.cohortId = id; state.cohortLabel = c.label; renderCrumbs(); setView('viewBatches'); renderBatchList(); };
 
-  const defs = svg.append('defs');
-  const glow = defs.append('filter').attr('id','nodeGlow').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');
-  glow.append('feGaussianBlur').attr('stdDeviation', 5).attr('result','blur');
-  glow.append('feMerge').selectAll('feMergeNode').data(['blur','SourceGraphic']).join('feMergeNode').attr('in', d=>d);
+    // Left side: name + stats
+    const leftInfo = document.createElement('div');
+    leftInfo.style.flex = '1';
+    leftInfo.innerHTML = `
+      <div style="font-weight: 700; font-size: 15px; color: var(--text-dark); margin-bottom: 4px;">${c.label}</div>
+      <div style="font-size: 12px; color: var(--muted);">${students} students · ${batches.length} batch${batches.length===1?'':'es'}</div>
+    `;
 
-  // Orbit rings
-  svg.append('g').selectAll('circle').data([0.4, 0.7, 1]).join('circle')
-    .attr('cx', cx).attr('cy', cy)
-    .attr('r', d => d * orbitR)
-    .attr('fill','none')
-    .attr('stroke', COLOR_RING)
-    .attr('stroke-width', 1.5)
-    .attr('stroke-dasharray', '5 5');
+    // Right side: heat strips
+    const stripsContainer = document.createElement('div');
+    stripsContainer.style.display = 'flex';
+    stripsContainer.style.gap = '6px';
+    stripsContainer.style.alignItems = 'center';
 
-  cohorts.forEach((c, i) => {
-    if(i === 0){ c.x = cx; c.y = cy; }
-    else {
-      const a = (i-1) * (2*Math.PI / Math.max(1, cohorts.length-1)) - Math.PI/2;
-      c.x = cx + Math.cos(a) * orbitR;
-      c.y = cy + Math.sin(a) * orbitR;
+    if (batches.length === 0) {
+      const emptyStrip = document.createElement('div');
+      emptyStrip.style.fontSize = '11px';
+      emptyStrip.style.color = 'var(--faint)';
+      emptyStrip.style.fontFamily = "'IBM Plex Mono', monospace";
+      emptyStrip.textContent = 'No batches';
+      stripsContainer.appendChild(emptyStrip);
+    } else {
+      batches.forEach(b => {
+        // Fallback to maxSimilarity from backend, or infer from flaggedCount if missing
+        const sim = typeof b.maxSimilarity === 'number' ? b.maxSimilarity : (b.flaggedCount > 0 ? 90 : 0);
+        const color = getMatrixColor(sim);
+        
+        const tickWrap = document.createElement('div');
+        tickWrap.style.position = 'relative';
+        
+        const tick = document.createElement('div');
+        tick.style.width = '14px';
+        tick.style.height = '36px';
+        tick.style.borderRadius = '4px';
+        tick.style.background = color;
+        tick.title = `${b.label}: Max Similarity ${Math.round(sim)}%`;
+        
+        // Add subtle border if light colored to distinguish from white background
+        if (sim < 20) {
+          tick.style.border = '1px solid var(--line)';
+        }
+        
+        tickWrap.appendChild(tick);
+        stripsContainer.appendChild(tickWrap);
+      });
     }
+
+    row.appendChild(leftInfo);
+    row.appendChild(stripsContainer);
+    listContainer.appendChild(row);
   });
 
-  const tooltip = document.getElementById('orbitTooltip');
-
-  const node = svg.append('g').selectAll('g').data(cohorts).join('g')
-    .attr('class','cohort-node')
-    .attr('transform', d => `translate(${d.x},${d.y})`);
-
-  // Outer glow ring
-  node.append('circle')
-    .attr('r', d => radius(d.students) + 8)
-    .attr('fill', d => d.flagged > 0 ? COLOR_HIGH_BG : COLOR_OK_BG)
-    .attr('stroke', 'none')
-    .attr('opacity', 0.6);
-
-  // Main node circle
-  node.append('circle').attr('class','core')
-    .attr('r', d => radius(d.students))
-    .attr('fill', d => d.flagged > 0 ? COLOR_HIGH_BG : COLOR_OK_BG)
-    .attr('stroke', d => d.flagged > 0 ? COLOR_HIGH : COLOR_OK)
-    .attr('stroke-width', 2.5);
-
-  // Center dot
-  node.append('circle')
-    .attr('r', 5)
-    .attr('fill', d => d.flagged > 0 ? COLOR_HIGH : COLOR_OK);
-
-  // Label: cohort name
-  node.append('text')
-    .attr('class','lbl-name')
-    .attr('y', d => radius(d.students) + 22)
-    .attr('fill', COLOR_TEXT)
-    .attr('font-family', 'Inter, sans-serif')
-    .attr('font-weight', '700')
-    .attr('font-size', '13px')
-    .attr('text-anchor', 'middle')
-    .text(d => d.label);
-
-  // Label: meta stats
-  node.append('text')
-    .attr('class','lbl-meta')
-    .attr('y', d => radius(d.students) + 38)
-    .attr('fill', COLOR_MUTED)
-    .attr('font-family', 'Inter, sans-serif')
-    .attr('font-size', '11px')
-    .attr('text-anchor', 'middle')
-    .text(d => `${d.students} students · ${d.flagged} flagged`);
-
-  node.on('mouseenter', function(e, d){
-      d3.select(this).select('.core').attr('filter','url(#nodeGlow)');
-      tooltip.style.opacity = 1;
-      tooltip.innerHTML = `<b>${d.label}</b><br>${d.batches} batch${d.batches===1?'':'es'} analyzed`;
-    })
-    .on('mousemove', function(e){
-      const rect = wrap.getBoundingClientRect();
-      tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
-      tooltip.style.top = (e.clientY - rect.top + 10) + 'px';
-    })
-    .on('mouseleave', function(){ d3.select(this).select('.core').attr('filter', null); tooltip.style.opacity = 0; })
-    .on('click', (e,d) => { state.cohortId = d.id; state.cohortLabel = d.label; renderCrumbs(); setView('viewBatches'); renderBatchList(); });
+  wrap.appendChild(listContainer);
 }
 
 function renderBatchList(){
@@ -895,17 +997,42 @@ function renderResultsStats(){
 
 function scoreClass(s){ return s>=90?'high':s>=60?'med':'ok'; }
 
-/* Small Multiples Cluster Grid */
-function renderSmallMultiples(){
-  const grid = document.getElementById('clustersGrid');
-  grid.innerHTML = '';
+/* 3D Cluster View */
+let _clusterRenderer = null;
+let _clusterAnimationId = null;
+
+async function renderSmallMultiples(){
+  if (!window.THREE || !window.OrbitControls) {
+    setTimeout(renderSmallMultiples, 50);
+    return;
+  }
+
+  const container = document.getElementById('cluster3dContainer');
+  if (!container) return;
+  container.innerHTML = '';
   document.getElementById('clustersEmpty').style.display = 'none';
+
+  if (_clusterAnimationId) {
+    cancelAnimationFrame(_clusterAnimationId);
+    _clusterAnimationId = null;
+  }
 
   if (!state.batch || !state.batch.pairs) return;
 
   const q = (document.getElementById('search').value || '').toLowerCase();
+  
+  const minThreshold = state.threshold || 0;
+  
+  const badge = document.getElementById('clusterFilterBadge');
+  if (badge) {
+    badge.textContent = minThreshold > 0 ? `Showing ≥${minThreshold}% Flagged Pairs Only` : 'Showing All Student Pairs';
+    badge.style.background = '#F1F5F9';
+    badge.style.color = '#475569';
+    badge.style.border = '1px solid #CBD5E1';
+  }
+
   const filteredPairs = state.batch.pairs.filter(p =>
-    p.similarity >= state.threshold &&
+    p.similarity >= minThreshold &&
     (state.activeType==='all' || p.type===state.activeType) &&
     (p.a.toLowerCase().includes(q) || p.b.toLowerCase().includes(q))
   );
@@ -916,14 +1043,11 @@ function renderSmallMultiples(){
   }
 
   const adj = new Map();
-  const degrees = new Map();
   filteredPairs.forEach(p => {
     if (!adj.has(p.a)) adj.set(p.a, []);
     if (!adj.has(p.b)) adj.set(p.b, []);
     adj.get(p.a).push({ target: p.b, pair: p });
     adj.get(p.b).push({ target: p.a, pair: p });
-    degrees.set(p.a, (degrees.get(p.a) || 0) + 1);
-    degrees.set(p.b, (degrees.get(p.b) || 0) + 1);
   });
 
   const visited = new Set();
@@ -931,16 +1055,13 @@ function renderSmallMultiples(){
 
   for (const [node] of adj.entries()) {
     if (visited.has(node)) continue;
-    
     const componentNodes = [];
     const componentPairsSet = new Set();
     const queue = [node];
     visited.add(node);
-
     while (queue.length > 0) {
       const curr = queue.shift();
       componentNodes.push(curr);
-
       const neighbors = adj.get(curr) || [];
       neighbors.forEach(({ target, pair }) => {
         componentPairsSet.add(pair);
@@ -950,10 +1071,8 @@ function renderSmallMultiples(){
         }
       });
     }
-
     const componentPairs = Array.from(componentPairsSet);
     const maxSim = Math.max(...componentPairs.map(p => p.similarity));
-
     components.push({
       id: components.length + 1,
       nodes: componentNodes,
@@ -961,136 +1080,556 @@ function renderSmallMultiples(){
       maxSim
     });
   }
-
   components.sort((a, b) => b.maxSim - a.maxSim);
 
-  components.forEach(comp => {
-    const card = document.createElement('div');
-    card.className = 'cluster-card';
-    card.style.position = 'relative';
+  // Setup Three.js Scene
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#FFFFFF');
+  scene.fog = new THREE.FogExp2('#FFFFFF', 0.001);
 
-    const maxBadgeClass = comp.maxSim >= 90 ? '' : 'med';
-    card.innerHTML = `
-      <div class="cluster-card-head">
-        <div class="cluster-card-title">Cluster #${comp.id} (${comp.nodes.length} Students)</div>
-        <div class="cluster-card-badge ${maxBadgeClass}">Max ${comp.maxSim}%</div>
-      </div>
-      <svg class="cluster-svg" id="cluster-svg-${comp.id}" style="background: radial-gradient(circle at center, #FFFFFF 0%, #F8FAFC 100%); border: 1px solid var(--line);"></svg>
-    `;
-    grid.appendChild(card);
+  const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 2000);
 
-    const svg = d3.select(`#cluster-svg-${comp.id}`);
-    const width = 320;
-    const height = 210;
-    svg.attr('viewBox', `0 0 ${width} ${height}`);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(renderer.domElement);
 
-    const totalStudents = state.batch.studentCount || 0;
-    const unflaggedCount = Math.max(0, Math.min(15, totalStudents - comp.nodes.length));
-    const bgDots = [];
-    for (let i = 0; i < unflaggedCount; i++) {
-      bgDots.push({
-        x: 20 + Math.random() * (width - 40),
-        y: 20 + Math.random() * (height - 40)
-      });
-    }
+  // Setup OrbitControls with Zoom Disabled (no zoom in / zoom out)
+  const controls = new window.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.enableZoom = false; // Disable scroll zoom in / zoom out per request
 
-    svg.append('g').selectAll('circle')
-      .data(bgDots).join('circle')
-      .attr('cx', d => d.x).attr('cy', d => d.y)
-      .attr('r', 2.5)
-      .attr('fill', 'var(--faint)')
-      .attr('opacity', 0.4);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+  scene.add(ambientLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.95);
+  dirLight.position.set(100, 200, 100);
+  scene.add(dirLight);
 
-    const nodesData = comp.nodes.map(id => ({ id, degree: degrees.get(id) || 1 }));
-    const linksData = comp.pairs.map(p => ({ source: p.a, target: p.b, value: p.similarity, pair: p }));
+  // Compact dot sphere geometry matching the reference image dot sizes
+  const sphereGeo = new THREE.SphereGeometry(2.5, 24, 24);
+  
+  // Slate-silver material matching "User" dots from the reference image
+  const slateNodeMat = new THREE.MeshStandardMaterial({ 
+    color: '#788896', 
+    roughness: 0.5, 
+    metalness: 0.1 
+  });
+  
+  // Bright red material for selected node matching "Selected User" from the reference image
+  const selectedNodeMat = new THREE.MeshStandardMaterial({ 
+    color: '#DC2626', 
+    roughness: 0.3, 
+    metalness: 0.2 
+  });
 
-    const sim = d3.forceSimulation(nodesData)
-      .force('link', d3.forceLink(linksData).id(d => d.id).distance(75).strength(0.6))
-      .force('charge', d3.forceManyBody().strength(-160))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collide', d3.forceCollide(28));
+  // Helper to create crisp 3D percentage badge sprites floating above pair connections
+  function createPercentSprite(percent) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
 
-    const hullGroup = svg.append('g').attr('class', 'hull-group');
-    const hullPath = hullGroup.append('path')
-      .attr('fill', comp.maxSim >= 90 ? 'rgba(220, 38, 38, 0.08)' : 'rgba(217, 119, 6, 0.08)')
-      .attr('stroke', comp.maxSim >= 90 ? 'rgba(220, 38, 38, 0.25)' : 'rgba(217, 119, 6, 0.25)')
-      .attr('stroke-width', 1.5)
-      .attr('stroke-linejoin', 'round');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.12)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+    
+    const x = 12, y = 10, w = 104, h = 44, r = 10;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
 
-    const link = svg.append('g').selectAll('path').data(linksData).join('path')
-      .attr('fill', 'none')
-      .attr('stroke', d => d.value >= 90 ? 'var(--high)' : 'var(--med)')
-      .attr('stroke-width', d => 1.5 + d.value / 35)
-      .attr('stroke-opacity', 0.85)
-      .style('cursor', 'pointer');
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#CBD5E1';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
-    link.on('click', (e, d) => openDrawer(d.pair));
+    ctx.fillStyle = percent >= 90 ? '#DC2626' : (percent >= 80 ? '#D97706' : '#475569');
+    ctx.font = 'bold 22px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(percent + '%', 64, 32);
 
-    const node = svg.append('g').selectAll('g').data(nodesData).join('g')
-      .style('cursor', 'pointer')
-      .call(d3.drag()
-        .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-        .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-        .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(12, 6, 1);
+    return sprite;
+  }
 
-    node.append('circle')
-      .attr('r', d => 12 + Math.min(10, d.degree * 3))
-      .attr('fill', 'var(--surface)')
-      .attr('stroke', d => comp.pairs.some(p => (p.a === d.id || p.b === d.id) && p.similarity >= 90) ? 'var(--high)' : 'var(--primary)')
-      .attr('stroke-width', 2.5);
+  // Helper to create student name pill label matching the reference image ("Wandera Martin")
+  function createNameSprite(nameText) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
 
-    node.append('text')
-      .attr('font-family', 'IBM Plex Mono, monospace')
-      .attr('font-size', '10px')
-      .attr('font-weight', '600')
-      .attr('fill', 'var(--text-dark)')
-      .attr('text-anchor', 'middle')
-      .attr('dy', d => 24 + Math.min(10, d.degree * 3))
-      .text(d => d.id);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.15)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+    
+    const x = 8, y = 8, w = 240, h = 48, r = 24;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
 
-    node.on('click', (e, d) => {
-      const matchPair = comp.pairs.find(p => p.a === d.id || p.b === d.id);
-      if (matchPair) openDrawer(matchPair);
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#E2E8F0';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#1E293B';
+    ctx.font = '600 20px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const displayName = nameText.length > 18 ? nameText.slice(0, 16) + '…' : nameText;
+    ctx.fillText(displayName, 128, 32);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(18, 4.5, 1);
+    return sprite;
+  }
+
+  const studentMeshes = [];
+  const percentSprites = [];
+  const studentPositions = new Map();
+  let selectedMesh = null;
+  let activeNameSprite = null;
+  
+  // Position connected student pairs with short, compact lines matching reference image layout
+  components.forEach((comp, idx) => {
+    const compRadius = 55 + (idx % 2) * 25;
+    const compTheta = (idx / components.length) * Math.PI * 2;
+    const compY = ((idx % 3) - 1) * 20;
+    
+    const groupCenter = new THREE.Vector3(
+      compRadius * Math.cos(compTheta),
+      compY,
+      compRadius * Math.sin(compTheta)
+    );
+
+    const nodeCount = comp.nodes.length;
+    // Short line length offset (14 units radius = short clean 28 units pair distance)
+    const nodeSpreadRadius = 14;
+
+    comp.nodes.forEach((studentId, nIdx) => {
+      const mesh = new THREE.Mesh(sphereGeo, slateNodeMat);
+      
+      const angle = (nIdx / Math.max(2, nodeCount)) * Math.PI * 2 + (idx * 0.5);
+      const offset = new THREE.Vector3(
+        nodeSpreadRadius * Math.cos(angle),
+        ((nIdx % 2) - 0.5) * 12,
+        nodeSpreadRadius * Math.sin(angle)
+      );
+      
+      mesh.position.copy(groupCenter).add(offset);
+      
+      // Compact dot scale matching attached reference image size
+      const baseScale = 1.25;
+      mesh.scale.setScalar(baseScale);
+      mesh.userData = { studentId, component: comp, baseScale, baseY: mesh.position.y };
+      
+      studentPositions.set(studentId, mesh.position);
+      studentMeshes.push(mesh);
+      scene.add(mesh);
     });
 
-    card.addEventListener('mouseenter', () => {
-      document.querySelectorAll('.cluster-card').forEach(c => {
-        if (c !== card) c.style.opacity = '0.5';
-      });
-    });
-    card.addEventListener('mouseleave', () => {
-      document.querySelectorAll('.cluster-card').forEach(c => {
-        c.style.opacity = '1';
-      });
+    // Short silver line connecting active matching pairs
+    const silverLineMat = new THREE.LineBasicMaterial({ 
+      color: '#CBD5E1',
+      transparent: true,
+      opacity: 0.85
     });
 
-    sim.on('tick', () => {
-      nodesData.forEach(d => {
-        d.x = Math.max(25, Math.min(width - 25, d.x));
-        d.y = Math.max(25, Math.min(height - 35, d.y));
-      });
+    comp.pairs.forEach(pair => {
+      const p1 = studentPositions.get(pair.a);
+      const p2 = studentPositions.get(pair.b);
+      if (p1 && p2) {
+        const points = [p1, p2];
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(lineGeo, silverLineMat);
+        scene.add(line);
 
-      link.attr('d', d => {
-        const dx = d.target.x - d.source.x;
-        const dy = d.target.y - d.source.y;
-        const dr = Math.sqrt(dx * dx + dy * dy) * 1.2;
-        return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
-      });
-
-      node.attr('transform', d => `translate(${d.x},${d.y})`);
-
-      if (nodesData.length >= 3) {
-        const points = nodesData.map(d => [d.x, d.y]);
-        const hull = d3.polygonHull(points);
-        if (hull) {
-          hullPath.attr('d', `M${hull.join('L')}Z`);
-        }
-      } else if (nodesData.length === 2) {
-        const [n1, n2] = nodesData;
-        hullPath.attr('d', `M${n1.x - 15},${n1.y - 15} L${n2.x + 15},${n2.y - 15} L${n2.x + 15},${n2.y + 15} L${n1.x - 15},${n1.y + 15} Z`);
+        // Position 3D percentage badge sprite floating at midpoint of silver line
+        const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+        mid.y += 4;
+        const sprite = createPercentSprite(pair.similarity);
+        sprite.position.copy(mid);
+        sprite.userData = { baseY: mid.y, pair };
+        scene.add(sprite);
+        percentSprites.push(sprite);
       }
     });
   });
+
+  // Render floating overlay legend (matching reference image: "User" slate dot, "Selected User" red dot)
+  const existingLegend = document.getElementById('clusterOverlayLegend');
+  if (existingLegend) existingLegend.remove();
+
+  const legendDiv = document.createElement('div');
+  legendDiv.id = 'clusterOverlayLegend';
+  legendDiv.style.cssText = `
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    background: #FFFFFF;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #475569;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    pointer-events: none;
+    z-index: 10;
+  `;
+  legendDiv.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="width:10px; height:10px; border-radius:50%; background:#788896; display:inline-block;"></span>
+      <span>User</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="width:10px; height:10px; border-radius:50%; background:#DC2626; display:inline-block;"></span>
+      <span>Selected User</span>
+    </div>
+  `;
+  container.style.position = 'relative';
+  container.appendChild(legendDiv);
+
+  // Auto-fit camera framing so entire cluster is visible at first glance without zooming
+  const box = new THREE.Box3();
+  studentMeshes.forEach(mesh => box.expandByPoint(mesh.position));
+  if (!box.isEmpty()) {
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 60);
+    const fov = camera.fov * (Math.PI / 180);
+    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5;
+    cameraZ = Math.max(cameraZ, 120);
+    camera.position.set(center.x, center.y + cameraZ * 0.2, center.z + cameraZ);
+    controls.target.copy(center);
+    camera.lookAt(center);
+    controls.update();
+  } else {
+    camera.position.set(0, 40, 150);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }
+
+  // Interaction: Raycasting to open real side-by-side split description panel
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  const onClick = (event) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(studentMeshes);
+    if (intersects.length > 0) {
+      const mesh = intersects[0].object;
+      const { studentId, component } = mesh.userData;
+
+      // Reset previously selected node to slate silver
+      if (selectedMesh) {
+        selectedMesh.material = slateNodeMat;
+      }
+      if (activeNameSprite) {
+        scene.remove(activeNameSprite);
+        activeNameSprite = null;
+      }
+
+      // Highlight clicked node as bright red "Selected User" matching reference image
+      mesh.material = selectedNodeMat;
+      selectedMesh = mesh;
+
+      // Attach student name pill label floating next to the red node
+      const nameSprite = createNameSprite(studentId);
+      nameSprite.position.copy(mesh.position).add(new THREE.Vector3(12, 3, 0));
+      scene.add(nameSprite);
+      activeNameSprite = nameSprite;
+      
+      let matchPair = component.pairs.find(p => (p.a === studentId || p.b === studentId) && (state.activeType === 'Report' ? p.type === 'Report' : p.type === 'Code'));
+      if (!matchPair) {
+        matchPair = component.pairs.find(p => p.a === studentId || p.b === studentId);
+      }
+      if (matchPair) openSidePanel(matchPair);
+    }
+  };
+
+  renderer.domElement.addEventListener('click', onClick);
+
+  const observer = new ResizeObserver(entries => {
+    for (let entry of entries) {
+      const width = entry.contentRect.width;
+      const height = entry.contentRect.height;
+      if(width > 0 && height > 0) {
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
+    }
+  });
+  observer.observe(container);
+
+  // Subtle stationary idle motion in place (gentle scale breathing + micro bobbing)
+  let clock = 0;
+  const animate = () => {
+    _clusterAnimationId = requestAnimationFrame(animate);
+    clock += 0.008;
+
+    studentMeshes.forEach((mesh, idx) => {
+      const baseScale = mesh.userData.baseScale || 2.0;
+      mesh.scale.setScalar(baseScale + Math.sin(clock * 3.0 + idx * 0.7) * 0.16);
+      if (mesh.userData.baseY !== undefined) {
+        mesh.position.y = mesh.userData.baseY + Math.sin(clock * 2.0 + idx * 0.5) * 1.2;
+      }
+    });
+
+    percentSprites.forEach((sprite, idx) => {
+      if (sprite.userData.baseY !== undefined) {
+        sprite.position.y = sprite.userData.baseY + Math.sin(clock * 2.0 + idx * 0.5) * 1.2;
+      }
+    });
+
+    controls.update();
+    renderer.render(scene, camera);
+  };
+  animate();
+}
+
+async function openSidePanel(p) {
+  const panel = document.getElementById('clusterSidePanel');
+  if (!panel) return;
+
+  document.getElementById('sideTitle').textContent = p.a + '  vs.  ' + p.b;
+  document.getElementById('sideSub').textContent = p.type + ' · ' + p.similarity + '% similarity' + (p.crossBatch ? ' · cross-batch' : '');
+  document.getElementById('sideNote').textContent = p.similarity >= 90
+    ? 'High confidence similarity match (≥90%). Recommend academic review.'
+    : 'Moderate similarity. May reflect template code or common assignment structures.';
+
+  document.getElementById('sideBtnConfirm').onclick = () => { setStatus(p.id,'Confirmed'); closeSidePanel(); renderActivePanel(); };
+  document.getElementById('sideBtnClear').onclick = () => { setStatus(p.id,'Cleared'); closeSidePanel(); renderActivePanel(); };
+  document.getElementById('sideClose').onclick = () => { closeSidePanel(); };
+
+  panel.style.display = 'flex';
+  window.dispatchEvent(new Event('resize'));
+
+  document.getElementById('sideStudentA').textContent = p.a;
+  document.getElementById('sideStudentB').textContent = p.b;
+  document.getElementById('sideLinkAName').textContent = p.a;
+  document.getElementById('sideLinkBName').textContent = p.b;
+  document.getElementById('sideLinkABadges').innerHTML = '<span style="font-size:10px; color:var(--faint);">Loading…</span>';
+  document.getElementById('sideLinkBBadges').innerHTML = '<span style="font-size:10px; color:var(--faint);">Loading…</span>';
+  document.getElementById('sideContentA').textContent = 'Loading files...';
+  document.getElementById('sideContentB').textContent = 'Loading files...';
+
+  try {
+    const res = await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}/pairs/${p.id}/files`);
+    if (!res.ok) throw new Error("Could not load files");
+    const data = await res.json();
+
+    document.getElementById('sideStudentA').textContent = data.aStudent;
+    document.getElementById('sideStudentB').textContent = data.bStudent;
+
+    const renderLinkBadges = (githubUrl, docUrl) => {
+      let html = '';
+      if (githubUrl) {
+        html += `<a href="${githubUrl}" target="_blank" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 600; text-decoration: none; background: #24292e; color: #ffffff;">GitHub ↗</a>`;
+      }
+      if (docUrl) {
+        html += `<a href="${docUrl}" target="_blank" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 600; text-decoration: none; background: #1a73e8; color: #ffffff;">Google Drive ↗</a>`;
+      }
+      if (!githubUrl && !docUrl) {
+        html += `<span style="font-size: 10.5px; color: var(--faint); font-style: italic;">No link</span>`;
+      }
+      return html;
+    };
+
+    document.getElementById('sideLinkAName').textContent = data.aStudent;
+    document.getElementById('sideLinkABadges').innerHTML = renderLinkBadges(data.aGithubLink, data.aDocLink, data.pairType || p.type);
+    document.getElementById('sideLinkBName').textContent = data.bStudent;
+    document.getElementById('sideLinkBBadges').innerHTML = renderLinkBadges(data.bGithubLink, data.bDocLink, data.pairType || p.type);
+
+    const selA = document.getElementById('sideSelectA');
+    const selB = document.getElementById('sideSelectB');
+    selA.innerHTML = '';
+    selB.innerHTML = '';
+
+    const aFiles = data.aFiles || [];
+    const bFiles = data.bFiles || [];
+
+    if (aFiles.length > 1) {
+      selA.innerHTML = `<option value="ALL">All Files (${aFiles.length})</option>` +
+        aFiles.map((f, i) => `<option value="${i}">${f.path}</option>`).join('');
+    } else if (aFiles.length === 1) {
+      selA.innerHTML = `<option value="0">${aFiles[0].path}</option>`;
+    } else {
+      selA.innerHTML = `<option value="NONE">${data.aFileName || 'No file'}</option>`;
+    }
+
+    if (bFiles.length > 1) {
+      selB.innerHTML = `<option value="ALL">All Files (${bFiles.length})</option>` +
+        bFiles.map((f, i) => `<option value="${i}">${f.path}</option>`).join('');
+    } else if (bFiles.length === 1) {
+      selB.innerHTML = `<option value="0">${bFiles[0].path}</option>`;
+    } else {
+      selB.innerHTML = `<option value="NONE">${data.bFileName || 'No file'}</option>`;
+    }
+
+    let sideMatches = data.matches || p.matches || [];
+    let sideMatchIdx = 0;
+    let currentSideFilterMode = 'matches';
+
+    document.querySelectorAll('.side-view-chip').forEach(chip => {
+      chip.onclick = function() {
+        document.querySelectorAll('.side-view-chip').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        currentSideFilterMode = this.dataset.sideMode;
+        renderSideDiffs();
+      };
+    });
+
+    const formatSideContent = (content, matches, side, startKey, endKey, mode) => {
+      if (!content) return 'No file content available';
+      const lines = content.split('\n');
+      const MAX_LINES = 3000;
+      const renderLines = lines.slice(0, MAX_LINES);
+
+      const matchedLines = new Set();
+      matches.forEach(m => {
+        const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
+        if (!s) return;
+        const len = m.length || 1;
+        const e = m[endKey] || (s + len - 1);
+        for (let ln = s; ln <= Math.min(e, MAX_LINES); ln++) {
+          matchedLines.add(ln);
+        }
+      });
+
+      if (mode === 'all') return content;
+
+      if (mode === 'matches' && matchedLines.size === 0) {
+        return '--- No direct line-level matched fragments found for this file ---';
+      }
+
+      let out = [];
+      let inBlock = false;
+      let blockIdx = 0;
+
+      renderLines.forEach((lineText, idx) => {
+        const lineNum = idx + 1;
+        const isMatched = matchedLines.has(lineNum);
+
+        if (mode === 'matches' && !isMatched) {
+          inBlock = false;
+          return;
+        }
+        if (mode === 'diff' && isMatched) {
+          inBlock = false;
+          return;
+        }
+
+        if (mode === 'matches') {
+          if (!inBlock) {
+            blockIdx++;
+            out.push(`--- Matched Block #${blockIdx} (Starting Line ${lineNum}) ---`);
+            inBlock = true;
+          }
+        }
+
+        const prefix = String(lineNum).padStart(4, ' ') + ' | ';
+        out.push(prefix + lineText);
+      });
+
+      if (out.length === 0) {
+        if (mode === 'matches') return '--- No matching fragments ---';
+        return `✨ Highly Identical (${p.similarity}% Similarity)\nNo significant non-matching lines found between these files.`;
+      }
+
+      return out.join('\n');
+    };
+
+    const renderSideDiffs = () => {
+      const m = sideMatches[sideMatchIdx];
+      const valA = selA.value;
+      const contentA = (valA === 'ALL' || valA === 'NONE') ? data.aContent : (aFiles[+valA]?.content || data.aContent);
+      document.getElementById('sideContentA').textContent = formatSideContent(contentA, sideMatches, 'A', 'aStartLine', 'aEndLine', currentSideFilterMode);
+
+      const valB = selB.value;
+      const contentB = (valB === 'ALL' || valB === 'NONE') ? data.bContent : (bFiles[+valB]?.content || data.bContent);
+      document.getElementById('sideContentB').textContent = formatSideContent(contentB, sideMatches, 'B', 'bStartLine', 'bEndLine', currentSideFilterMode);
+
+      if (sideMatches.length > 0 && m) {
+        document.getElementById('sideMatchLabel').textContent = `Match ${sideMatchIdx + 1} / ${sideMatches.length}`;
+        const aStart = m.aStartLine || m.aLines || 1;
+        const aEnd = m.aEndLine || (aStart + (m.length || 1) - 1);
+        const bStart = m.bStartLine || m.bLines || 1;
+        const bEnd = m.bEndLine || (bStart + (m.length || 1) - 1);
+        document.getElementById('sideMatchLinesSummary').textContent = `A: L${aStart}–${aEnd} ↔ B: L${bStart}–${bEnd}`;
+      } else {
+        document.getElementById('sideMatchLabel').textContent = `0 / 0 matches`;
+        document.getElementById('sideMatchLinesSummary').textContent = '';
+      }
+    };
+
+    document.getElementById('sideMatchPrev').onclick = () => {
+      if (sideMatches.length > 0) {
+        sideMatchIdx = (sideMatchIdx - 1 + sideMatches.length) % sideMatches.length;
+        renderSideDiffs();
+      }
+    };
+    document.getElementById('sideMatchNext').onclick = () => {
+      if (sideMatches.length > 0) {
+        sideMatchIdx = (sideMatchIdx + 1) % sideMatches.length;
+        renderSideDiffs();
+      }
+    };
+
+    selA.onchange = renderSideDiffs;
+    selB.onchange = renderSideDiffs;
+
+    renderSideDiffs();
+  } catch (e) {
+    document.getElementById('sideContentA').textContent = 'No file content available.';
+    document.getElementById('sideContentB').textContent = 'No file content available.';
+  }
+}
+
+function closeSidePanel() {
+  const panel = document.getElementById('clusterSidePanel');
+  if (panel) panel.style.display = 'none';
+  window.dispatchEvent(new Event('resize'));
 }
 
 /* Matrix Heatmap View */
@@ -1458,6 +1997,12 @@ async function openDrawer(p){
   document.getElementById('btnConfirm').onclick = () => { setStatus(p.id,'Confirmed'); closeDrawer(); renderActivePanel(); };
   document.getElementById('btnClear').onclick = () => { setStatus(p.id,'Cleared'); closeDrawer(); renderActivePanel(); };
 
+  window._currentDiffFilterMode = 'matches';
+  document.querySelectorAll('.diff-view-chip').forEach(c => {
+    if (c.dataset.viewMode === 'matches') c.classList.add('active');
+    else c.classList.remove('active');
+  });
+
   drawer.classList.add('open'); 
   document.getElementById('drawerScrim').classList.add('open');
 
@@ -1475,6 +2020,11 @@ async function openDrawer(p){
 
     document.getElementById('diffStudentA').textContent = data.aStudent;
     document.getElementById('diffStudentB').textContent = data.bStudent;
+
+    document.getElementById('linkStudentAName').textContent = data.aStudent;
+    document.getElementById('linkStudentABadges').innerHTML = renderLinkBadges(data.aGithubLink, data.aDocLink, data.pairType || p.type);
+    document.getElementById('linkStudentBName').textContent = data.bStudent;
+    document.getElementById('linkStudentBBadges').innerHTML = renderLinkBadges(data.bGithubLink, data.bDocLink, data.pairType || p.type);
 
     const selA = document.getElementById('diffSelectA');
     const selB = document.getElementById('diffSelectB');
@@ -1505,24 +2055,54 @@ async function openDrawer(p){
     currentPairMatches = data.matches || p.matches || [];
     activeMatchIdx = 0;
 
-    const renderPaneA = () => {
-      const val = selA.value;
-      const content = (val === 'ALL' || val === 'NONE') ? data.aContent : (aFiles[+val]?.content || data.aContent);
-      renderDiffPane('A', content, currentPairMatches, 'aStartLine', 'aEndLine');
+    window._renderActiveDiffPanes = (autoSelect = false) => {
+      const m = currentPairMatches[activeMatchIdx];
+      if (autoSelect && m) {
+        if (m.aFile && aFiles.length > 1) {
+          const aIdx = aFiles.findIndex(f => {
+            const p1 = f.path.replace(/\\/g, '/');
+            const p2 = m.aFile.replace(/\\/g, '/');
+            return p1.endsWith(p2) || p2.endsWith(p1);
+          });
+          if (aIdx >= 0) selA.value = aIdx;
+        }
+        if (m.bFile && bFiles.length > 1) {
+          const bIdx = bFiles.findIndex(f => {
+            const p1 = f.path.replace(/\\/g, '/');
+            const p2 = m.bFile.replace(/\\/g, '/');
+            return p1.endsWith(p2) || p2.endsWith(p1);
+          });
+          if (bIdx >= 0) selB.value = bIdx;
+        }
+      }
+
+      const valA = selA.value;
+      const contentA = (valA === 'ALL' || valA === 'NONE') ? data.aContent : (aFiles[+valA]?.content || data.aContent);
+      const selectedPathA = (valA === 'ALL' || valA === 'NONE') ? null : aFiles[+valA]?.path;
+      const matchesA = selectedPathA ? currentPairMatches.filter(x => {
+        if (!x.aFile) return true;
+        const p1 = x.aFile.replace(/\\/g, '/');
+        const p2 = selectedPathA.replace(/\\/g, '/');
+        return p1.endsWith(p2) || p2.endsWith(p1);
+      }) : currentPairMatches;
+      renderDiffPane('A', contentA, matchesA, 'aStartLine', 'aEndLine', m);
+
+      const valB = selB.value;
+      const contentB = (valB === 'ALL' || valB === 'NONE') ? data.bContent : (bFiles[+valB]?.content || data.bContent);
+      const selectedPathB = (valB === 'ALL' || valB === 'NONE') ? null : bFiles[+valB]?.path;
+      const matchesB = selectedPathB ? currentPairMatches.filter(x => {
+        if (!x.bFile) return true;
+        const p1 = x.bFile.replace(/\\/g, '/');
+        const p2 = selectedPathB.replace(/\\/g, '/');
+        return p1.endsWith(p2) || p2.endsWith(p1);
+      }) : currentPairMatches;
+      renderDiffPane('B', contentB, matchesB, 'bStartLine', 'bEndLine', m);
     };
 
-    const renderPaneB = () => {
-      const val = selB.value;
-      const content = (val === 'ALL' || val === 'NONE') ? data.bContent : (bFiles[+val]?.content || data.bContent);
-      renderDiffPane('B', content, currentPairMatches, 'bStartLine', 'bEndLine');
-    };
+    selA.onchange = () => { window._renderActiveDiffPanes(false); updateMatchNav(); };
+    selB.onchange = () => { window._renderActiveDiffPanes(false); updateMatchNav(); };
 
-    selA.onchange = renderPaneA;
-    selB.onchange = renderPaneB;
-
-    renderPaneA();
-    renderPaneB();
-
+    window._renderActiveDiffPanes(true);
     updateMatchNav();
   } catch (e) {
     document.getElementById('diffContentA').textContent = 'No file content available for this pair.';
@@ -1531,7 +2111,37 @@ async function openDrawer(p){
   }
 }
 
-function renderDiffPane(side, content, matches, startKey, endKey) {
+function renderLinkBadges(githubUrl, docUrl, pairType) {
+  let html = '';
+  const isReport = (pairType && String(pairType).toLowerCase() === 'report');
+
+  if (githubUrl && !isReport) {
+    html += `<a href="${githubUrl}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; text-decoration: underline; color: #1E293B; background: transparent;">
+      GitHub Repo ↗
+    </a>`;
+  } else if (docUrl && isReport) {
+    html += `<a href="${docUrl}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; text-decoration: underline; color: #1E293B; background: transparent;">
+      Google Drive Report ↗
+    </a>`;
+  }
+  if (!html) {
+    html = `<span style="font-size: 11px; color: var(--faint); font-style: italic;">No link available</span>`;
+  }
+  return html;
+}
+
+window._currentDiffFilterMode = 'all';
+
+document.querySelectorAll('.diff-view-chip').forEach(chip => {
+  chip.addEventListener('click', function() {
+    document.querySelectorAll('.diff-view-chip').forEach(c => c.classList.remove('active'));
+    this.classList.add('active');
+    window._currentDiffFilterMode = this.dataset.viewMode;
+    if (window._renderActiveDiffPanes) window._renderActiveDiffPanes(false);
+  });
+});
+
+function renderDiffPane(side, content, matches, startKey, endKey, activeMatch) {
   const pre = document.getElementById(`diffContent${side}`);
   const minimap = document.getElementById(`minimap${side}`);
   pre.innerHTML = '';
@@ -1546,30 +2156,64 @@ function renderDiffPane(side, content, matches, startKey, endKey) {
 
   const activeLines = new Set();
   const matchedLines = new Set();
-  matches.forEach((m, mIdx) => {
+  matches.forEach((m) => {
     const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
     if (!s) return;
     const len = m.length || 1;
     const e = m[endKey] || (s + len - 1);
     for (let ln = s; ln <= Math.min(e, MAX_LINES); ln++) {
       matchedLines.add(ln);
-      if (mIdx === activeMatchIdx) activeLines.add(ln);
+      if (m === activeMatch) activeLines.add(ln);
     }
   });
 
+  const mode = window._currentDiffFilterMode || 'all';
   const frag = document.createDocumentFragment();
+  let inBlock = false;
+  let blockIdx = 0;
+
   renderLines.forEach((lineText, idx) => {
     const lineNum = idx + 1;
+    const isMatched = matchedLines.has(lineNum);
+    const isActive = activeLines.has(lineNum);
+
+    if (mode === 'matches' && !isMatched) {
+      inBlock = false;
+      return;
+    }
+    if (mode === 'diff' && isMatched) {
+      inBlock = false;
+      return;
+    }
+
+    if (mode === 'matches') {
+      if (!inBlock) {
+        blockIdx++;
+        const header = document.createElement('div');
+        header.style.cssText = 'background: #FEF2F2; color: #DC2626; font-size: 11px; font-weight: 700; padding: 4px 10px; border-top: 1px solid #FECACA; border-bottom: 1px solid #FECACA; margin: 8px 0 4px; font-family: "IBM Plex Mono", monospace; border-radius: 4px; border-left: 3px solid #DC2626;';
+        header.textContent = `--- Matched Block #${blockIdx} (Starting Line ${lineNum}) ---`;
+        frag.appendChild(header);
+        inBlock = true;
+      }
+    }
+
     const span = document.createElement('span');
     span.className = 'line';
     span.id = `${side.toLowerCase()}-line-${lineNum}`;
 
-    if (activeLines.has(lineNum)) span.classList.add('match-active');
-    else if (matchedLines.has(lineNum)) span.classList.add('match-other');
+    if (isActive) span.classList.add('match-active');
+    else if (isMatched) span.classList.add('match-other');
 
     span.textContent = lineText;
     frag.appendChild(span);
   });
+
+  if (mode === 'diff' && frag.childNodes.length === 0) {
+    const emptyNotice = document.createElement('div');
+    emptyNotice.style.cssText = 'padding: 24px 16px; color: #475569; font-size: 13px; font-weight: 600; text-align: center; line-height: 1.6; font-family: "Inter", sans-serif; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 16px 12px;';
+    emptyNotice.innerHTML = `✨ Highly Identical Content<br><span style="font-size: 11.5px; font-weight: 400; color: #64748B;">No non-matching lines found between these files in this view.</span>`;
+    frag.appendChild(emptyNotice);
+  }
 
   if (totalLines > MAX_LINES) {
     const note = document.createElement('span');
@@ -1584,14 +2228,14 @@ function renderDiffPane(side, content, matches, startKey, endKey) {
 
   if (totalLines > 0) {
     const mmFrag = document.createDocumentFragment();
-    matches.forEach((m, mIdx) => {
+    matches.forEach((m) => {
       const s = m[startKey] || m[`${side.toLowerCase()}Lines`];
       if (!s) return;
       const topPct = ((s - 1) / totalLines) * 100;
       const tick = document.createElement('div');
       tick.className = 'diff-minimap-tick';
       tick.style.top = `${topPct}%`;
-      tick.style.background = mIdx === activeMatchIdx ? 'var(--high)' : 'var(--med)';
+      tick.style.background = m === activeMatch ? 'var(--high)' : 'var(--med)';
       mmFrag.appendChild(tick);
     });
     minimap.appendChild(mmFrag);
@@ -1630,12 +2274,14 @@ function highlightActiveMatch() {
 document.getElementById('matchPrev').addEventListener('click', () => {
   if (currentPairMatches.length === 0) return;
   activeMatchIdx = (activeMatchIdx - 1 + currentPairMatches.length) % currentPairMatches.length;
+  if (window._renderActiveDiffPanes) window._renderActiveDiffPanes(true);
   updateMatchNav();
 });
 
 document.getElementById('matchNext').addEventListener('click', () => {
   if (currentPairMatches.length === 0) return;
   activeMatchIdx = (activeMatchIdx + 1) % currentPairMatches.length;
+  if (window._renderActiveDiffPanes) window._renderActiveDiffPanes(true);
   updateMatchNav();
 });
 
@@ -1645,18 +2291,81 @@ document.getElementById('drawerScrim').addEventListener('click', closeDrawer);
 
 const uploadModal = document.getElementById('uploadModal');
 const fetchModal = document.getElementById('fetchModal');
+const csvModal = document.getElementById('csvModal');
 const uploadScrim = document.getElementById('uploadScrim');
 let pickedFile = null;
+let pickedCsvFile = null;
 
 document.getElementById('openUpload').addEventListener('click', () => { uploadModal.classList.add('open'); uploadScrim.classList.add('open'); });
+document.getElementById('openCsvUpload').addEventListener('click', () => { csvModal.classList.add('open'); uploadScrim.classList.add('open'); });
 document.getElementById('cancelUpload').addEventListener('click', closeUpload);
 document.getElementById('cancelFetch').addEventListener('click', closeUpload);
+document.getElementById('cancelCsvUpload').addEventListener('click', closeUpload);
 uploadScrim.addEventListener('click', closeUpload);
 function closeUpload(){ 
   uploadModal.classList.remove('open'); 
   fetchModal.classList.remove('open');
+  csvModal.classList.remove('open');
   uploadScrim.classList.remove('open'); 
 }
+
+const csvDz = document.getElementById('csvDropzone');
+const csvFileInput = document.getElementById('csvFileInput');
+csvDz.addEventListener('click', () => csvFileInput.click());
+csvDz.addEventListener('dragover', e => { e.preventDefault(); csvDz.classList.add('hover'); });
+csvDz.addEventListener('dragleave', () => csvDz.classList.remove('hover'));
+csvDz.addEventListener('drop', e => { e.preventDefault(); csvDz.classList.remove('hover'); pickedCsvFile = e.dataTransfer.files[0]; updateCsvDzLabel(); });
+csvFileInput.addEventListener('change', () => { pickedCsvFile = csvFileInput.files[0]; updateCsvDzLabel(); });
+function updateCsvDzLabel(){ document.getElementById('csvDzLabel').textContent = pickedCsvFile ? pickedCsvFile.name : 'Drop a .csv export file here or click to browse'; }
+
+document.getElementById('submitCsvUpload').addEventListener('click', async () => {
+  const cohortLabel = document.getElementById('csvCohortLabel').value.trim() || 'KAIM Batch 9';
+  const batchLabelInput = document.getElementById('csvBatchLabel').value.trim();
+  const status = document.getElementById('csvRunStatus');
+
+  if(!pickedCsvFile){ status.textContent = 'Please select a CSV export file.'; return; }
+
+  const cohortId = slugify(cohortLabel);
+  const batchLabel = batchLabelInput || 'CSV Batch Submissions';
+  const batchId = slugify(batchLabel);
+
+  const fd = new FormData();
+  fd.append('cohort_id', cohortId);
+  fd.append('cohort_label', cohortLabel);
+  fd.append('batch_id', batchId);
+  fd.append('batch_label', batchLabel);
+  fd.append('csv_file', pickedCsvFile);
+
+  status.innerHTML = '<span style="color:var(--primary); font-weight:600;">Processing CSV... Cloning GitHub repositories & downloading Google Docs... Running JPlag engines...</span>';
+  document.getElementById('submitCsvUpload').disabled = true;
+
+  try {
+    const res = await fetch(API + '/run-csv', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const err = await res.json();
+      status.textContent = err.detail || 'Failed to process CSV file.';
+      document.getElementById('submitCsvUpload').disabled = false;
+      return;
+    }
+    const data = await res.json();
+    status.innerHTML = '<span style="color:#059669; font-weight:600;">✓ Analysis complete! Loading dashboard results...</span>';
+    
+    setTimeout(async () => {
+      closeUpload();
+      state.cohortId = data.results.cohortId || cohortId;
+      state.cohortLabel = cohortLabel;
+      state.batchId = data.results.batchId || batchId;
+      state.batchLabel = data.detectedTitle || batchLabel;
+      renderCrumbs();
+      setView('viewResults');
+      await loadBatch();
+      document.getElementById('submitCsvUpload').disabled = false;
+    }, 1200);
+  } catch (e) {
+    status.textContent = 'Could not connect to backend server on localhost:8000.';
+    document.getElementById('submitCsvUpload').disabled = false;
+  }
+});
 
 const dz = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');

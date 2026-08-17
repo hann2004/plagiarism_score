@@ -30,7 +30,19 @@ class Storage:
         return self.data_dir / f"{cohort_id}__{batch_id}__submissions.json"
 
     def list_cohorts(self) -> dict:
-        return self._read_index()["cohorts"]
+        index = self._read_index()
+        modified = False
+        for cohort_id, cohort in index.get("cohorts", {}).items():
+            for batch_id, batch_meta in cohort.get("batches", {}).items():
+                batch_data = self.get_batch(cohort_id, batch_id)
+                if batch_data and "pairs" in batch_data:
+                    fc = sum(1 for p in batch_data["pairs"] if p.get("similarity", 0) >= 80)
+                    if batch_meta.get("flaggedCount") != fc:
+                        batch_meta["flaggedCount"] = fc
+                        modified = True
+        if modified:
+            self._write_index(index)
+        return index["cohorts"]
 
     def get_batch(self, cohort_id: str, batch_id: str):
         path = self._batch_path(cohort_id, batch_id)
@@ -63,19 +75,21 @@ class Storage:
 
     def add_submission(self, cohort_id: str, batch_id: str, student_name: str, github_link: str, doc_link: str):
         subs = self.get_submissions(cohort_id, batch_id)
-        # Upsert by student_name
+        # Upsert by student_name without overwriting existing links with empty strings
         found = False
         for s in subs:
             if s["student_name"].lower() == student_name.lower():
-                s["github_link"] = github_link
-                s["doc_link"] = doc_link
+                if github_link and github_link.strip():
+                    s["github_link"] = github_link.strip()
+                if doc_link and doc_link.strip():
+                    s["doc_link"] = doc_link.strip()
                 found = True
                 break
         if not found:
             subs.append({
                 "student_name": student_name,
-                "github_link": github_link,
-                "doc_link": doc_link
+                "github_link": github_link.strip() if github_link else "",
+                "doc_link": doc_link.strip() if doc_link else ""
             })
         
         with open(self._submissions_path(cohort_id, batch_id), "w") as f:
@@ -133,7 +147,8 @@ class Storage:
         cohort["batches"][batch_id] = {
             "label": batch_label,
             "studentCount": existing["studentCount"],
-            "flaggedCount": sum(1 for p in existing["pairs"] if p["similarity"] >= 90),
+            "flaggedCount": sum(1 for p in existing["pairs"] if p["similarity"] >= 80),
+            "maxSimilarity": max([p["similarity"] for p in existing["pairs"]] + [0]),
         }
         self._write_index(index)
 
