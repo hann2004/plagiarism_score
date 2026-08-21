@@ -93,18 +93,45 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
     top_file = extract_dir / "topComparisons.json"
     overview_file = extract_dir / "overview.json"
 
+    def _extract_top_from_dict(d: dict) -> list:
+        if not isinstance(d, dict):
+            return []
+        if "topComparisons" in d and isinstance(d["topComparisons"], list):
+            return d["topComparisons"]
+        if "comparisons" in d and isinstance(d["comparisons"], list):
+            return d["comparisons"]
+        if "metrics" in d and isinstance(d["metrics"], dict):
+            for m_val in d["metrics"].values():
+                if isinstance(m_val, dict):
+                    res = _extract_top_from_dict(m_val)
+                    if res:
+                        return res
+        return []
+
     if top_file.exists():
-        with open(top_file, encoding="utf-8", errors="replace") as f:
-            top = json.load(f)
-    elif overview_file.exists():
-        with open(overview_file, encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                top = data.get("topComparisons") or data.get("comparisons") or []
-            elif isinstance(data, list):
-                top = data
-    else:
-        # Search recursively for topComparisons.json or overview.json or any comparisons array JSON
+        try:
+            with open(top_file, encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    top = data
+                elif isinstance(data, dict):
+                    top = _extract_top_from_dict(data)
+        except Exception:
+            pass
+
+    if not top and overview_file.exists():
+        try:
+            with open(overview_file, encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    top = data
+                elif isinstance(data, dict):
+                    top = _extract_top_from_dict(data)
+        except Exception:
+            pass
+
+    if not top:
+        # Search recursively for topComparisons.json, overview.json, or any list/dict with comparisons
         for json_file in extract_dir.rglob("*.json"):
             if json_file.name in ["topComparisons.json", "overview.json"]:
                 try:
@@ -114,17 +141,37 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
                         top = data
                         break
                     elif isinstance(data, dict):
-                        top = data.get("topComparisons") or data.get("comparisons") or []
+                        top = _extract_top_from_dict(data)
                         if top:
                             break
                 except Exception:
                     pass
 
     if not top:
-        # topComparisons.json existed but was empty — this can happen when all
-        # submissions are below the similarity threshold even with -m 0.0 (e.g.
-        # all files are empty / too short to tokenise).  Return empty results
-        # rather than crashing so the caller can surface a friendlier message.
+        # Direct Pairwise JSON Fallback: Read individual studentA-studentB.json files (e.g. JPlag v5 root format)
+        system_json_names = {
+            "overview.json", "topcomparisons.json", "options.json",
+            "submissionfileindex.json", "submissionmappings.json",
+            "cluster.json", "distribution.json", "runinformation.json"
+        }
+        fallback_pairs = []
+        for json_file in extract_dir.rglob("*.json"):
+            if json_file.name.lower() not in system_json_names and "-" in json_file.stem:
+                try:
+                    with open(json_file, encoding="utf-8", errors="replace") as f:
+                        pdata = json.load(f)
+                    if isinstance(pdata, dict):
+                        first = pdata.get("firstSubmission") or pdata.get("first_submission") or pdata.get("firstSubmissionId")
+                        second = pdata.get("secondSubmission") or pdata.get("second_submission") or pdata.get("secondSubmissionId")
+                        if first and second:
+                            fallback_pairs.append(pdata)
+                except Exception:
+                    pass
+        if fallback_pairs:
+            top = fallback_pairs
+
+    if not top:
+        # topComparisons.json / overview.json / pairwise files were not found or empty
         zip_contents = []
         try:
             with zipfile.ZipFile(result_zip) as _zf:
