@@ -24,15 +24,27 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
     result_base = output_dir  # JPlag appends .zip or .jplag itself
 
     cmd = [
-        "java", "-jar", str(jar_path),
+        "java", "-Xmx512m",   # cap heap — Render free tier only has ~512 MB total
+        "-jar", str(jar_path),
         str(submissions_dir),
         "-l", language,
         "--mode", "RUN",
         "-r", str(result_base),
-        "-m", "0.0",   # include ALL pairs in topComparisons.json (no similarity floor)
+        "-m", "0.0",              # include ALL pairs regardless of similarity score
+        "--max-comparisons", "100000",  # don't cap topComparisons.json at JPlag's default 100
     ]
 
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+
+    # Surface real JPlag errors immediately — before looking for the zip.
+    # Without this check a crash (OOM, bad args, no valid files) is silently
+    # swallowed and surfaces as the misleading "topComparisons.json missing" error.
+    if proc.returncode != 0:
+        raise JPlagError(
+            f"JPlag exited with code {proc.returncode}.\n\n"
+            f"stdout:\n{proc.stdout[-2000:]}\n"
+            f"stderr:\n{proc.stderr[-2000:]}"
+        )
 
     # Find the output zip file (.zip or .jplag or result.zip)
     result_zip = None
@@ -66,7 +78,8 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
             "JPlag did not produce a result file. This usually means the "
             "language didn't match the files (e.g. report files that "
             "aren't plain .txt), or there weren't enough valid submissions.\n\n"
-            f"JPlag said:\n{proc.stdout[-1500:]}\n{proc.stderr[-1500:]}"
+            f"JPlag stdout:\n{proc.stdout[-1500:]}\n"
+            f"JPlag stderr:\n{proc.stderr[-1500:]}"
         )
 
     extract_dir = output_dir.parent / "extracted"
@@ -109,7 +122,24 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
                     pass
 
     if not top:
-        raise JPlagError("JPlag ran successfully, but topComparisons.json / overview.json was missing from its output zip.")
+        # topComparisons.json existed but was empty — this can happen when all
+        # submissions are below the similarity threshold even with -m 0.0 (e.g.
+        # all files are empty / too short to tokenise).  Return empty results
+        # rather than crashing so the caller can surface a friendlier message.
+        zip_contents = []
+        try:
+            with zipfile.ZipFile(result_zip) as _zf:
+                zip_contents = _zf.namelist()
+        except Exception:
+            pass
+        raise JPlagError(
+            "JPlag ran but produced no comparisons.\n"
+            "This usually means the submitted files were empty, too short to "
+            "tokenise, or in the wrong format for the detected language.\n\n"
+            f"Zip contents: {zip_contents}\n"
+            f"JPlag stdout:\n{proc.stdout[-1000:]}\n"
+            f"JPlag stderr:\n{proc.stderr[-1000:]}"
+        )
 
     comparisons = []
     for entry in top:
