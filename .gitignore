@@ -7,5 +7,5 @@ backend/work/*
 backend/jplag/*.jar
 *.zip
 *.csv
-app_data/files/
+app_data/
 app_work/
