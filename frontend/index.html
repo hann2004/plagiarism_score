@@ -1145,10 +1145,17 @@ function renderResultsStats(){
   if (!b || !b.pairs) return;
 
   const totalStudents = b.studentCount || 0;
-  const flaggedPairs = b.pairs.filter(p => p.similarity >= 80).length;
-  const totalPairs = b.pairs.length;
-  // Total unique student pairs possible = n*(n-1)/2
-  const expectedPairs = totalStudents > 1 ? (totalStudents * (totalStudents - 1)) / 2 : 0;
+  
+  // Filter pairs according to active type filter (All, Code, or Report)
+  const activePairs = b.pairs.filter(p => state.activeType === 'all' || p.type === state.activeType);
+  const flaggedPairs = activePairs.filter(p => p.similarity >= 80).length;
+  
+  // Count unique student pairs compared (prevent double counting Code + Report for the same student pair)
+  const uniqueComparedPairs = new Set(activePairs.map(p => [p.a, p.b].sort().join('__'))).size;
+  
+  // Total unique student pairs possible = N * (N - 1) / 2
+  const maxPossiblePairs = totalStudents > 1 ? (totalStudents * (totalStudents - 1)) / 2 : 0;
+  const coveragePct = maxPossiblePairs > 0 ? Math.min(100, Math.round((uniqueComparedPairs / maxPossiblePairs) * 100)) : 100;
 
   document.getElementById('resultsStats').innerHTML = `
     <div class="stat-card">
@@ -1158,8 +1165,8 @@ function renderResultsStats(){
     </div>
     <div class="stat-card">
       <div class="stat-label">Total Comparisons</div>
-      <div class="stat-value">${totalPairs.toLocaleString()}</div>
-      <div class="stat-sub">of ${expectedPairs.toLocaleString()} possible pairs</div>
+      <div class="stat-value">${uniqueComparedPairs.toLocaleString()}</div>
+      <div class="stat-sub">of ${maxPossiblePairs.toLocaleString()} possible student pairs</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Flagged Pairs</div>
@@ -1168,8 +1175,8 @@ function renderResultsStats(){
     </div>
     <div class="stat-card">
       <div class="stat-label">Coverage</div>
-      <div class="stat-value">${expectedPairs > 0 ? Math.round((totalPairs/expectedPairs)*100) : 100}%</div>
-      <div class="stat-sub">Pairs compared vs possible</div>
+      <div class="stat-value">${coveragePct}%</div>
+      <div class="stat-sub">Student pair coverage</div>
     </div>`;
 }
 
