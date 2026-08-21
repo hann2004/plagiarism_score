@@ -30,8 +30,7 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
         "-l", language,
         "--mode", "RUN",
         "-r", str(result_base),
-        "-m", "0.0",              # include ALL pairs regardless of similarity score
-        "--max-comparisons", "100000",  # don't cap topComparisons.json at JPlag's default 100
+        "-m", "0.0",   # include ALL pairs regardless of similarity score (supported in all JPlag versions)
     ]
 
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
@@ -152,7 +151,47 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
             "matches": _load_matches(extract_dir, entry.get("firstSubmission", ""), entry.get("secondSubmission", "")),
         })
 
-    return {"comparisons": comparisons}
+    analyzed_students = set()
+    sub_file_index = extract_dir / "submissionFileIndex.json"
+    sub_mappings = extract_dir / "submissionMappings.json"
+
+    if sub_file_index.exists():
+        try:
+            with open(sub_file_index, encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+                file_indexes = data.get("fileIndexes", {})
+                for stud_id, files in file_indexes.items():
+                    if files:
+                        analyzed_students.add(stud_id)
+        except Exception:
+            pass
+
+    if sub_mappings.exists() and not analyzed_students:
+        try:
+            with open(sub_mappings, encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+                sub_ids = data.get("submissionIds", {})
+                analyzed_students.update(sub_ids.keys())
+        except Exception:
+            pass
+
+    if not analyzed_students:
+        for entry in top:
+            a = entry.get("firstSubmission", entry.get("first_submission", ""))
+            b = entry.get("secondSubmission", entry.get("second_submission", ""))
+            if a:
+                analyzed_students.add(a)
+            if b:
+                analyzed_students.add(b)
+
+    all_student_folders = set(p.name for p in submissions_dir.iterdir() if p.is_dir())
+    skipped_students = sorted(list(all_student_folders - analyzed_students))
+
+    return {
+        "comparisons": comparisons,
+        "analyzedStudents": sorted(list(analyzed_students)),
+        "skippedStudents": skipped_students,
+    }
 
 
 def _load_matches(extract_dir: Path, a: str, b: str) -> list:

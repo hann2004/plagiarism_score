@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 # Create jplag directory and download JPlag executable jar if missing
 RUN mkdir -p /app/backend/jplag && \
-    wget -q -O /app/backend/jplag/jplag.jar https://github.com/jplag/JPlag/releases/download/v5.0.0/jplag-5.0.0-jar-with-dependencies.jar
+    curl -sSL -f -o /app/backend/jplag/jplag.jar https://github.com/jplag/JPlag/releases/download/v5.0.0/jplag-5.0.0-jar-with-dependencies.jar
 
 # Copy repository source code
 COPY . /app/

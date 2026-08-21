@@ -1157,11 +1157,14 @@ function renderResultsStats(){
   const maxPossiblePairs = totalStudents > 1 ? (totalStudents * (totalStudents - 1)) / 2 : 0;
   const coveragePct = maxPossiblePairs > 0 ? Math.min(100, Math.round((uniqueComparedPairs / maxPossiblePairs) * 100)) : 100;
 
+  const skippedList = b.skippedStudents || [];
+  const skippedCount = skippedList.length;
+
   document.getElementById('resultsStats').innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Students</div>
       <div class="stat-value">${totalStudents}</div>
-      <div class="stat-sub">Submissions analyzed</div>
+      <div class="stat-sub">${skippedCount > 0 ? `<span style="color:#f59e0b;">${skippedCount} skipped (no files)</span>` : 'Submissions analyzed'}</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Total Comparisons</div>
@@ -1177,7 +1180,12 @@ function renderResultsStats(){
       <div class="stat-label">Coverage</div>
       <div class="stat-value">${coveragePct}%</div>
       <div class="stat-sub">Student pair coverage</div>
-    </div>`;
+    </div>
+    ${skippedCount > 0 ? `
+    <div style="grid-column: 1 / -1; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #e5e7eb; display: flex; align-items: center; justify-content: space-between;">
+      <span>⚠️ <strong>${skippedCount} student folder(s) excluded from comparison:</strong> No valid source files remained after stripping non-code/documentation.</span>
+      <button onclick="alert('Skipped Students (No valid code/text files found):\\n\\n' + (${JSON.stringify(skippedList)}.join('\\n')))" style="background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.5); color: #f59e0b; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">View Skipped List</button>
+    </div>` : ''}`;
 }
 
 function scoreClass(s){ return s>=90?'high':s>=60?'med':'ok'; }

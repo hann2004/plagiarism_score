@@ -137,7 +137,7 @@ class Storage:
         self._write_index(index)
 
     def save_run(self, cohort_id, cohort_label, batch_id, batch_label, mode,
-                 student_folders, comparisons) -> dict:
+                 student_folders, comparisons, skipped_students=None, analyzed_students=None) -> dict:
         existing = self.get_batch(cohort_id, batch_id) or {
             "cohortId": cohort_id, "cohortLabel": cohort_label,
             "batchId": batch_id, "batchLabel": batch_label,
@@ -145,6 +145,18 @@ class Storage:
         }
 
         existing["studentCount"] = max(existing["studentCount"], len(student_folders))
+
+        if skipped_students is not None:
+            skipped_by_mode = existing.setdefault("skippedStudentsByMode", {})
+            skipped_by_mode[mode] = skipped_students
+            all_skipped = set()
+            for s_list in skipped_by_mode.values():
+                all_skipped.update(s_list)
+            existing["skippedStudents"] = sorted(list(all_skipped))
+
+        if analyzed_students is not None:
+            analyzed_by_mode = existing.setdefault("analyzedStudentsByMode", {})
+            analyzed_by_mode[mode] = analyzed_students
 
         # index existing pairs by (a,b,mode) so re-running one mode (code vs report)
         # doesn't wipe out results already stored for the other mode

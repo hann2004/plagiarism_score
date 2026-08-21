@@ -487,6 +487,8 @@ async def run_comparison(
         batch_id=batch_id, batch_label=batch_label,
         mode=mode, student_folders=student_folders,
         comparisons=result["comparisons"],
+        skipped_students=result.get("skippedStudents", []),
+        analyzed_students=result.get("analyzedStudents", []),
     )
     _persist_student_files(submissions_dir, cohort_id, batch_id, mode)
     return {"ok": True, "studentCount": saved["studentCount"], "pairCount": len(saved["pairs"])}
@@ -543,6 +545,8 @@ async def run_fetched_comparison(
         batch_id=batch_id, batch_label=batch_label,
         mode=mode, student_folders=student_folders,
         comparisons=result["comparisons"],
+        skipped_students=result.get("skippedStudents", []),
+        analyzed_students=result.get("analyzedStudents", []),
     )
     _persist_student_files(submissions_dir, cohort_id, batch_id, mode)
     
@@ -639,7 +643,9 @@ async def run_csv_comparison(
                         cohort_id=cohort_id, cohort_label=cohort_label,
                         batch_id=cat_batch_id, batch_label=cat_batch_label,
                         mode="code", student_folders=student_folders_code,
-                        comparisons=jplag_res["comparisons"]
+                        comparisons=jplag_res["comparisons"],
+                        skipped_students=jplag_res.get("skippedStudents", []),
+                        analyzed_students=jplag_res.get("analyzedStudents", []),
                     )
                     _persist_student_files(submissions_dir_code, cohort_id, cat_batch_id, "code")
                     results["code"] = {"studentCount": saved_code["studentCount"], "pairCount": len(saved_code["pairs"])}
@@ -687,7 +693,9 @@ async def run_csv_comparison(
                         cohort_id=cohort_id, cohort_label=cohort_label,
                         batch_id=cat_batch_id, batch_label=cat_batch_label,
                         mode="report", student_folders=student_folders_report,
-                        comparisons=jplag_res["comparisons"]
+                        comparisons=jplag_res["comparisons"],
+                        skipped_students=jplag_res.get("skippedStudents", []),
+                        analyzed_students=jplag_res.get("analyzedStudents", []),
                     )
                     _persist_student_files(submissions_dir_report, cohort_id, cat_batch_id, "report")
                     results["report"] = {"studentCount": saved_report["studentCount"], "pairCount": len(saved_report["pairs"])}
