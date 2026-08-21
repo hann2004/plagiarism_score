@@ -711,10 +711,12 @@
 
 <script>
 const getApiBase = () => {
+  // Frontend is always served by the same FastAPI app as the backend
+  // (see app.mount("/", StaticFiles(...)) in main.py), so the API is
+  // always on the same origin. The only exception is opening the file
+  // directly from disk (file:// protocol) for quick local testing.
   if (location.protocol === 'file:') return 'http://localhost:8000/api';
-  if (location.port === '8000') return '/api';
-  const host = location.hostname || 'localhost';
-  return `http://${host}:8000/api`;
+  return '/api';
 };
 const API = getApiBase();
 let state = {
@@ -1201,9 +1203,20 @@ async function renderSmallMultiples(){
   }
 
   container.innerHTML = '';
-  document.getElementById('clustersEmpty').style.display = 'none';
+  const clustersEmptyEl = document.getElementById('clustersEmpty');
+  clustersEmptyEl.style.display = 'none';
 
-  if (!state.batch || !state.batch.pairs) return;
+  if (!state.batch || !state.batch.pairs) {
+    // No batch data loaded, most likely the API call failed
+    // (backend unreachable, wrong cohort/batch, etc). Show a message
+    // instead of leaving the panel silently blank.
+    clustersEmptyEl.style.display = 'block';
+    const title = clustersEmptyEl.querySelector('h4');
+    const desc = clustersEmptyEl.querySelector('p');
+    if (title) title.textContent = 'Could not load batch data';
+    if (desc) desc.textContent = 'The backend did not return any data for this batch. Check that it is running and reachable, then reload.';
+    return;
+  }
 
   const width = container.clientWidth || 800;
   const height = container.clientHeight || 620;
@@ -2572,7 +2585,7 @@ document.getElementById('submitCsvUpload').addEventListener('click', async () =>
       document.getElementById('submitCsvUpload').disabled = false;
     }, 1200);
   } catch (e) {
-    status.innerHTML = `<span style="color:var(--high); font-weight:600;">⚠ Could not connect to backend server on localhost:8000. Make sure the backend is running.</span>`;
+    status.innerHTML = `<span style="color:var(--high); font-weight:600;">⚠ Could not connect to backend server. Make sure it is running and reachable.</span>`;
     document.getElementById('submitCsvUpload').disabled = false;
   }
 });
@@ -2617,7 +2630,7 @@ document.getElementById('submitFetch').addEventListener('click', async () => {
       document.getElementById('submitFetch').disabled = false;
     }, 2500);
   } catch(e){
-    status.textContent = 'Could not connect to backend server on localhost:8000.';
+    status.textContent = 'Could not connect to backend server. Make sure it is running and reachable.';
     document.getElementById('submitFetch').disabled = false;
   }
 });
@@ -2652,7 +2665,7 @@ document.getElementById('submitUpload').addEventListener('click', async () => {
       await loadBatch();
     }, 500);
   } catch(e){
-    status.textContent = 'Could not connect to backend server on localhost:8000.';
+    status.textContent = 'Could not connect to backend server. Make sure it is running and reachable.';
   }
 });
 function slugify(s){ return s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
