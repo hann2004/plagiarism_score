@@ -29,6 +29,7 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
         "-l", language,
         "--mode", "RUN",
         "-r", str(result_base),
+        "-m", "0.0",   # include ALL pairs in topComparisons.json (no similarity floor)
     ]
 
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
