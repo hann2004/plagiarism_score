@@ -89,6 +89,13 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
     with zipfile.ZipFile(result_zip) as zf:
         zf.extractall(extract_dir)
 
+    def _get_sub_id(val) -> str:
+        if isinstance(val, str):
+            return val
+        if isinstance(val, dict):
+            return str(val.get("name") or val.get("id") or val.get("submissionId") or "")
+        return str(val) if val else ""
+
     top = []
     top_file = extract_dir / "topComparisons.json"
     overview_file = extract_dir / "overview.json"
@@ -96,10 +103,9 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
     def _extract_top_from_dict(d: dict) -> list:
         if not isinstance(d, dict):
             return []
-        if "topComparisons" in d and isinstance(d["topComparisons"], list):
-            return d["topComparisons"]
-        if "comparisons" in d and isinstance(d["comparisons"], list):
-            return d["comparisons"]
+        for key in ["topComparisons", "comparisons", "results", "pairwiseComparisons"]:
+            if key in d and isinstance(d[key], list):
+                return d[key]
         if "metrics" in d and isinstance(d["metrics"], dict):
             for m_val in d["metrics"].values():
                 if isinstance(m_val, dict):
@@ -133,7 +139,7 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
     if not top:
         # Search recursively for topComparisons.json, overview.json, or any list/dict with comparisons
         for json_file in extract_dir.rglob("*.json"):
-            if json_file.name in ["topComparisons.json", "overview.json"]:
+            if json_file.name.lower() in ["topcomparisons.json", "overview.json"]:
                 try:
                     with open(json_file, encoding="utf-8", errors="replace") as f:
                         data = json.load(f)
@@ -156,14 +162,34 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
         }
         fallback_pairs = []
         for json_file in extract_dir.rglob("*.json"):
-            if json_file.name.lower() not in system_json_names and "-" in json_file.stem:
+            if json_file.name.lower() not in system_json_names:
                 try:
                     with open(json_file, encoding="utf-8", errors="replace") as f:
                         pdata = json.load(f)
                     if isinstance(pdata, dict):
-                        first = pdata.get("firstSubmission") or pdata.get("first_submission") or pdata.get("firstSubmissionId")
-                        second = pdata.get("secondSubmission") or pdata.get("second_submission") or pdata.get("secondSubmissionId")
+                        first = (
+                            _get_sub_id(pdata.get("firstSubmission")) or
+                            _get_sub_id(pdata.get("first_submission")) or
+                            _get_sub_id(pdata.get("firstSubmissionId")) or
+                            _get_sub_id(pdata.get("submission1")) or
+                            _get_sub_id(pdata.get("id1"))
+                        )
+                        second = (
+                            _get_sub_id(pdata.get("secondSubmission")) or
+                            _get_sub_id(pdata.get("second_submission")) or
+                            _get_sub_id(pdata.get("secondSubmissionId")) or
+                            _get_sub_id(pdata.get("submission2")) or
+                            _get_sub_id(pdata.get("id2"))
+                        )
+                        if not first or not second:
+                            if "-" in json_file.stem:
+                                parts = json_file.stem.split("-", 1)
+                                if len(parts) == 2:
+                                    first, second = parts[0], parts[1]
+
                         if first and second:
+                            pdata["firstSubmission"] = first
+                            pdata["secondSubmission"] = second
                             fallback_pairs.append(pdata)
                 except Exception:
                     pass
@@ -190,13 +216,25 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
     comparisons = []
     for entry in top:
         sims = entry.get("similarities", {})
-        avg = sims.get("AVG", sims.get("MAX", 0.0))
-        comparisons.append({
-            "a": entry.get("firstSubmission", entry.get("first_submission", "")),
-            "b": entry.get("secondSubmission", entry.get("second_submission", "")),
-            "similarity": round(avg * 100, 1) if avg <= 1.0 else round(avg, 1),
-            "matches": _load_matches(extract_dir, entry.get("firstSubmission", ""), entry.get("secondSubmission", "")),
-        })
+        if isinstance(sims, dict):
+            avg = sims.get("AVG", sims.get("MAX", 0.0))
+        elif isinstance(sims, (int, float)):
+            avg = float(sims)
+        else:
+            avg = entry.get("similarity", entry.get("avgSimilarity", 0.0))
+
+        first = _get_sub_id(entry.get("firstSubmission") or entry.get("first_submission") or entry.get("firstSubmissionId") or entry.get("submission1") or entry.get("id1"))
+        second = _get_sub_id(entry.get("secondSubmission") or entry.get("second_submission") or entry.get("secondSubmissionId") or entry.get("submission2") or entry.get("id2"))
+
+        matches = entry.get("matches") or _load_matches(extract_dir, first, second)
+
+        if first and second:
+            comparisons.append({
+                "a": first,
+                "b": second,
+                "similarity": round(avg * 100, 1) if avg <= 1.0 else round(avg, 1),
+                "matches": matches,
+            })
 
     analyzed_students = set()
     sub_file_index = extract_dir / "submissionFileIndex.json"
