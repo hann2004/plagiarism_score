@@ -471,6 +471,15 @@
           <button class="active" data-panel="clusters">Small Clusters</button>
           <button data-panel="table">Data Table</button>
         </div>
+
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface); padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line);">
+          <span>Node Labels:</span>
+          <select id="toggleClusterLabelsSelect" onchange="toggleClusterLabels(this.value === 'on')" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 11.5px; font-weight: 600; outline: none; cursor: pointer;">
+            <option value="off" selected>Off (Hidden)</option>
+            <option value="on">On (Show Labels)</option>
+          </select>
+        </div>
+
         <button class="btn" style="margin-left: auto; color: var(--high); border-color: var(--primary-border);" id="deleteBatchBtn">Delete Comparison</button>
       </div>
 
@@ -546,13 +555,6 @@
         </div>
 
         <!-- Bottom Controls Bar -->
-        <div style="margin-top: 10px; display: flex; justify-content: flex-end; align-items: center;">
-          <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface); padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; user-select: none;">
-            <input type="checkbox" id="toggleClusterLabelsCb" onchange="toggleClusterLabels(this.checked)" checked style="cursor: pointer; accent-color: var(--primary);">
-            Show Student Labels
-          </label>
-        </div>
-
         <div class="empty" id="clustersEmpty" style="display:none; margin-top: 16px; padding: 40px 20px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
           <h4 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">No similarity connections match threshold (<span id="emptyThresholdText">90%</span>)</h4>
           <p style="font-size: 13.5px; color: var(--muted); margin: 0 0 16px;">Try selecting a lower threshold filter to view student connections.</p>
@@ -725,7 +727,7 @@ let state = {
   batch: null, cohorts: {},
   activeType: 'all', threshold: 70, panel: 'clusters',
   userSelectedPanel: false,
-  showLabels: true
+  showLabels: false
 };
 
 function toggleClusterLabels(checked) {
@@ -1176,6 +1178,7 @@ function scoreClass(s){ return s>=90?'high':s>=60?'med':'ok'; }
 /* 3D Cluster View */
 let _clusterRenderer = null;
 let _clusterAnimationId = null;
+let _percentTextureCache = new Map();
 
 async function renderSmallMultiples(){
   if (!window.THREE || !window.OrbitControls) {
@@ -1194,7 +1197,6 @@ async function renderSmallMultiples(){
   if (_clusterRenderer) {
     try {
       _clusterRenderer.dispose();
-      _clusterRenderer.forceContextLoss();
       if (_clusterRenderer.domElement && _clusterRenderer.domElement.parentNode) {
         _clusterRenderer.domElement.parentNode.removeChild(_clusterRenderer.domElement);
       }
@@ -1237,35 +1239,7 @@ async function renderSmallMultiples(){
 
   let activePairs = [...baseFilteredPairs];
 
-  // When threshold is 0 ("All"), generate synthetic 0% connections between all unconnected student pairs
-  // so that EVERY student has a connection with each other (100% connected graph)
-  if (minThreshold === 0 && allBatchStudents.length > 1) {
-    const existingPairKeys = new Set();
-    activePairs.forEach(p => {
-      existingPairKeys.add(`${p.a}__${p.b}`);
-      existingPairKeys.add(`${p.b}__${p.a}`);
-    });
 
-    for (let i = 0; i < allBatchStudents.length; i++) {
-      for (let j = i + 1; j < allBatchStudents.length; j++) {
-        const a = allBatchStudents[i];
-        const b = allBatchStudents[j];
-        if (!existingPairKeys.has(`${a}__${b}`)) {
-          const syntheticPair = {
-            id: `all_${i}_${j}`,
-            a: a,
-            b: b,
-            similarity: 0,
-            type: state.activeType === 'all' ? 'Code' : state.activeType,
-            synthetic: true
-          };
-          activePairs.push(syntheticPair);
-          existingPairKeys.add(`${a}__${b}`);
-          existingPairKeys.add(`${b}__${a}`);
-        }
-      }
-    }
-  }
 
   // Update badge to display exact number of pairs compared
   const badge = document.getElementById('clusterFilterBadge');
@@ -1298,9 +1272,12 @@ async function renderSmallMultiples(){
 
   const filteredPairs = activePairs;
 
+  // Extract only students who have similarity connections at current threshold
+  const activeStudentSet = new Set(filteredPairs.flatMap(p => [p.a, p.b]));
+  const activeStudents = Array.from(activeStudentSet);
+
   const adj = new Map();
-  // Initialize all batch students in adjacency graph so every student appears as a 3D node
-  allBatchStudents.forEach(s => adj.set(s, []));
+  activeStudents.forEach(s => adj.set(s, []));
 
   filteredPairs.forEach(p => {
     if (!adj.has(p.a)) adj.set(p.a, []);
@@ -1366,9 +1343,9 @@ async function renderSmallMultiples(){
   dirLight.position.set(100, 200, 100);
   scene.add(dirLight);
 
-  // Sync UI checkbox state
-  const cb = document.getElementById('toggleClusterLabelsCb');
-  if (cb) cb.checked = !!state.showLabels;
+  // Sync UI dropdown state
+  const sel = document.getElementById('toggleClusterLabelsSelect');
+  if (sel) sel.value = state.showLabels ? 'on' : 'off';
 
   // Larger sphere nodes for easier targeting and high visibility
   const sphereGeo = new THREE.SphereGeometry(4.8, 24, 24);
@@ -1383,19 +1360,23 @@ async function renderSmallMultiples(){
     color: '#E63946' 
   });
 
-  // Helper to create percentage badge sprites (scaled smaller for crisp, balanced display)
-  function createPercentSprite(percent) {
+  function getPercentTexture(percent) {
+    const key = `${percent}%`;
+    if (_percentTextureCache.has(key)) {
+      return _percentTextureCache.get(key);
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 256;
+    canvas.width = 256;
+    canvas.height = 128;
     const ctx = canvas.getContext('2d');
 
     ctx.fillStyle = '#FFFFFF';
-    ctx.shadowColor = 'rgba(0,0,0,0.25)';
-    ctx.shadowBlur = 18;
-    ctx.shadowOffsetY = 6;
+    ctx.shadowColor = 'rgba(0,0,0,0.2)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
 
-    const x = 20, y = 20, w = 472, h = 216, r = 48;
+    const x = 10, y = 10, w = 236, h = 108, r = 24;
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.lineTo(x + w - r, y);
@@ -1411,22 +1392,27 @@ async function renderSmallMultiples(){
 
     ctx.shadowColor = 'transparent';
     ctx.strokeStyle = '#64748B';
-    ctx.lineWidth = 8;
+    ctx.lineWidth = 4;
     ctx.stroke();
 
     ctx.fillStyle = percent >= 90 ? '#DC2626' : (percent >= 80 ? '#D97706' : '#0F172A');
-    ctx.font = '800 100px "IBM Plex Mono", monospace';
+    ctx.font = '800 52px "IBM Plex Mono", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(percent + '%', 256, 128);
+    ctx.fillText(percent + '%', 128, 64);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
+    _percentTextureCache.set(key, texture);
+    return texture;
+  }
+
+  function createPercentSprite(percent) {
+    const texture = getPercentTexture(percent);
     const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
     spriteMat.renderOrder = 999;
     const sprite = new THREE.Sprite(spriteMat);
-    // Reduced sprite size: 24x12 (smaller, visible & clear)
-    sprite.scale.set(24, 12, 1);
+    sprite.scale.set(18, 9, 1);
     return sprite;
   }
 
@@ -1489,9 +1475,9 @@ async function renderSmallMultiples(){
   function clearGraphHighlights() {
     studentMeshes.forEach(m => m.material = m.userData.originalMat);
     edgeObjects.forEach(item => {
-      const origCol = item.mesh.userData.originalColor || '#64748B';
+      const origCol = item.mesh.userData.originalColor || '#CBD5E1';
       item.mesh.material.color.set(origCol);
-      item.mesh.material.opacity = 0.85;
+      item.mesh.material.opacity = 0.9;
     });
     if (activeSelectedSprite) {
       scene.remove(activeSelectedSprite);
@@ -1502,8 +1488,8 @@ async function renderSmallMultiples(){
   }
   window._clearClusterHighlights = clearGraphHighlights;
 
-  // Reusable 3D Cylinder geometry for 3D edges (thick, bold & high-contrast)
-  const edgeCylinderGeo = new THREE.CylinderGeometry(1.2, 1.2, 1, 12);
+  // Reusable 3D Cylinder geometry for slender 3D edges (thinner, crisp & elegant)
+  const edgeCylinderGeo = new THREE.CylinderGeometry(0.8, 0.8, 1, 12);
 
   // Render components and student nodes in 3D (labels optional via state.showLabels)
   const numComps = components.length;
@@ -1545,23 +1531,26 @@ async function renderSmallMultiples(){
     });
   });
 
-  // Render connecting 3D cylinder edge tubes (high-contrast colored) and percentage badges for student pairs
+  // Render connecting 3D cylinder edge tubes (thick and lighter than nodes) and percentage badges for student pairs
   filteredPairs.forEach(p => {
     const meshA = studentMeshMap.get(p.a);
     const meshB = studentMeshMap.get(p.b);
     if (!meshA || !meshB) return;
 
+    // Skip rendering 3D edge lines for synthetic 0% pairs if total pair count is large
+    if (p.synthetic && filteredPairs.length > 300) return;
+
     const posA = meshA.position;
     const posB = meshB.position;
     const dist = posA.distanceTo(posB);
-    const edgeColor = p.similarity >= 85 ? '#DC2626' : (p.similarity >= 70 ? '#D97706' : '#475569');
+    const edgeColor = '#CBD5E1'; // Crisp light silver-gray, distinctly lighter than dark slate nodes (#1E293B)
 
     const edgeMat = new THREE.MeshStandardMaterial({
       color: edgeColor,
-      roughness: 0.4,
-      metalness: 0.2,
+      roughness: 0.3,
+      metalness: 0.5,
       transparent: true,
-      opacity: 0.85
+      opacity: p.synthetic ? 0.2 : 0.9
     });
 
     const edgeMesh = new THREE.Mesh(edgeCylinderGeo, edgeMat);
@@ -1576,12 +1565,14 @@ async function renderSmallMultiples(){
     scene.add(edgeMesh);
     edgeMeshes.push(edgeMesh);
 
-    // Percentage badge sprite on edge midpoint
-    const percentSprite = createPercentSprite(p.similarity);
-    percentSprite.position.set(mid.x, mid.y + 1.0, mid.z);
-    percentSprite.userData = { pair: p, originalColor: edgeColor };
-    scene.add(percentSprite);
-    edgeMeshes.push(percentSprite);
+    let percentSprite = null;
+    if (p.similarity > 0) {
+      percentSprite = createPercentSprite(p.similarity);
+      percentSprite.position.set(mid.x, mid.y + 1.0, mid.z);
+      percentSprite.userData = { pair: p, originalColor: edgeColor };
+      scene.add(percentSprite);
+      edgeMeshes.push(percentSprite);
+    }
 
     edgeObjects.push({
       mesh: edgeMesh,
@@ -1742,7 +1733,9 @@ async function renderSmallMultiples(){
       item.mesh.position.copy(mid);
       item.mesh.scale.set(1, len, 1);
       item.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-      item.percentSprite.position.set(mid.x, mid.y + 1.0, mid.z);
+      if (item.percentSprite) {
+        item.percentSprite.position.set(mid.x, mid.y + 1.0, mid.z);
+      }
     });
 
     headLabelSprites.forEach(item => {
@@ -2130,7 +2123,12 @@ function renderTable(){
 
   tbody.innerHTML = '';
   document.getElementById('emptyState').style.display = filtered.length ? 'none' : 'block';
-  filtered.forEach(p => {
+
+  // Slice to max 500 rows for instant, lag-free DOM rendering
+  const displayRows = filtered.slice(0, 500);
+
+  const fragment = document.createDocumentFragment();
+  displayRows.forEach(p => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><div class="students">${p.a} ↔ ${p.b}${p.crossBatch ? '<small>Cross-batch match</small>' : ''}</div></td>
@@ -2142,8 +2140,9 @@ function renderTable(){
         <option ${p.status==='Cleared'?'selected':''}>Cleared</option>
       </select></td>`;
     tr.addEventListener('click', () => openDrawer(p));
-    tbody.appendChild(tr);
+    fragment.appendChild(tr);
   });
+  tbody.appendChild(fragment);
 }
 
 async function setStatus(pairId, status){
