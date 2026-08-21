@@ -100,5 +100,9 @@ def convert_ipynb_to_py(folder: Path):
             try:
                 py_file = ipynb_file.with_suffix(".py")
                 py_file.write_text("".join(code_lines), encoding="utf-8")
+                try:
+                    ipynb_file.unlink()
+                except Exception:
+                    pass
             except Exception:
                 pass

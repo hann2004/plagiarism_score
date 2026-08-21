@@ -81,7 +81,7 @@ def _load_matches(extract_dir: Path, a: str, b: str) -> list:
             try:
                 with open(path) as f:
                     data = json.load(f)
-                matches = data.get("matches", [])[:20]
+                matches = data.get("matches", [])
                 result = []
                 for m in matches:
                     a_start = m.get("startInFirst", {}).get("line")

@@ -29,6 +29,35 @@ class Storage:
     def _submissions_path(self, cohort_id: str, batch_id: str) -> Path:
         return self.data_dir / f"{cohort_id}__{batch_id}__submissions.json"
 
+    def cleanup_empty_batches(self) -> dict:
+        index = self._read_index()
+        cohorts = index.get("cohorts", {})
+        modified = False
+
+        cohort_ids = list(cohorts.keys())
+        for cohort_id in cohort_ids:
+            cohort = cohorts[cohort_id]
+            batches = cohort.get("batches", {})
+            batch_ids = list(batches.keys())
+            for batch_id in batch_ids:
+                batch_meta = batches[batch_id]
+                batch_data = self.get_batch(cohort_id, batch_id)
+                is_empty = (
+                    (not batch_data and batch_meta.get("studentCount", 0) == 0) or
+                    (batch_data and len(batch_data.get("pairs", [])) == 0 and batch_meta.get("studentCount", 0) == 0)
+                )
+                if is_empty:
+                    del batches[batch_id]
+                    modified = True
+
+            if not batches:
+                del cohorts[cohort_id]
+                modified = True
+
+        if modified:
+            self._write_index(index)
+        return {"cohorts": index.get("cohorts", {}), "pinned_batch": index.get("pinned_batch")}
+
     def list_cohorts(self) -> dict:
         index = self._read_index()
         modified = False
@@ -42,7 +71,7 @@ class Storage:
                         modified = True
         if modified:
             self._write_index(index)
-        return index["cohorts"]
+        return {"cohorts": index.get("cohorts", {}), "pinned_batch": index.get("pinned_batch")}
 
     def get_batch(self, cohort_id: str, batch_id: str):
         path = self._batch_path(cohort_id, batch_id)

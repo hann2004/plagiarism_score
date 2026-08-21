@@ -91,6 +91,12 @@ def list_cohorts():
     return storage.list_cohorts()
 
 
+@app.post("/api/clean-empty")
+def clean_empty():
+    """Purge empty/unanalyzed CSV batches and empty cohorts."""
+    return storage.cleanup_empty_batches()
+
+
 @app.get("/api/cohorts/{cohort_id}/batches/{batch_id}")
 def get_batch(cohort_id: str, batch_id: str):
     batch = storage.get_batch(cohort_id, batch_id)
@@ -174,53 +180,61 @@ def _normalize_name(name: str) -> str:
     return re.sub(r'\b0+(\d+)', r'\1', s)
 
 
+CODE_EXTENSIONS = {
+    ".py", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".js", ".ts",
+    ".jsx", ".tsx", ".go", ".rs", ".php", ".rb", ".sql", ".html", ".css",
+    ".r", ".scala", ".kt", ".swift", ".m", ".sh", ".bash"
+}
+
+
 def _read_student_files(cohort_id: str, batch_id: str, student_name: str, mode: str = "code") -> dict:
     """Reads source files submitted by a student, filtered by mode.
     
     mode='code'   → returns source code files (excludes converted .txt reports)
     mode='report' → returns .txt files (the converted report text)
     """
-    # Look first in mode-specific directory (FILES_DIR or WORK_DIR), then fallback to generic batch directory
+    # Look first in requested mode directory, then other mode directory, then generic batch directory
+    other_mode = "report" if mode == "code" else "code"
     batch_dirs = [
         FILES_DIR / f"{cohort_id}__{batch_id}__{mode}",
         WORK_DIR / f"{cohort_id}__{batch_id}__{mode}" / "submissions",
+        FILES_DIR / f"{cohort_id}__{batch_id}__{other_mode}",
+        WORK_DIR / f"{cohort_id}__{batch_id}__{other_mode}" / "submissions",
         FILES_DIR / f"{cohort_id}__{batch_id}",
     ]
     
-    batch_dir = None
-    for bd in batch_dirs:
-        if bd.exists():
-            batch_dir = bd
-            break
-
-    if not batch_dir:
-        return {"mainName": None, "content": None, "files": []}
-
-    student_dir = batch_dir / student_name
-    if not student_dir.exists():
-        # Flexible folder match (e.g. "student 1" vs "student_01" vs "student_1_abebe_kebede")
-        target_norm = _normalize_name(student_name)
-        matched = None
-        for folder in batch_dir.iterdir():
-            if folder.is_dir():
-                folder_norm = _normalize_name(folder.name)
-                if folder_norm == target_norm or folder_norm in target_norm or target_norm in folder_norm:
-                    matched = folder
-                    break
-        if matched:
-            student_dir = matched
-        else:
-            return {"mainName": None, "content": None, "files": []}
-
     all_file_objects = []
-    for f in sorted(student_dir.rglob("*")):
-        if f.is_file() and not f.name.startswith("."):
-            try:
-                rel_path = str(f.relative_to(student_dir))
-                text = f.read_text(errors="replace")
-                all_file_objects.append({"path": rel_path, "content": text, "suffix": f.suffix.lower()})
-            except Exception:
-                pass
+    for bd in batch_dirs:
+        if not bd.exists():
+            continue
+        student_dir = bd / student_name
+        if not student_dir.exists():
+            target_norm = _normalize_name(student_name)
+            matched = None
+            for folder in bd.iterdir():
+                if folder.is_dir():
+                    folder_norm = _normalize_name(folder.name)
+                    if folder_norm == target_norm or folder_norm in target_norm or target_norm in folder_norm:
+                        matched = folder
+                        break
+            if matched:
+                student_dir = matched
+            else:
+                continue
+
+        files_found = []
+        for f in sorted(student_dir.rglob("*")):
+            if f.is_file() and not f.name.startswith("."):
+                try:
+                    rel_path = str(f.relative_to(student_dir))
+                    text = f.read_text(errors="replace")
+                    files_found.append({"path": rel_path, "content": text, "suffix": f.suffix.lower()})
+                except Exception:
+                    pass
+
+        if files_found:
+            all_file_objects = files_found
+            break
 
     if not all_file_objects:
         return {"mainName": None, "content": None, "files": []}
@@ -228,27 +242,18 @@ def _read_student_files(cohort_id: str, batch_id: str, student_name: str, mode: 
     found_files = []
     if mode == "report":
         # Report mode: prefer .txt / report files
-        found_files = [item for item in all_file_objects if item["suffix"] == ".txt"]
+        found_files = [item for item in all_file_objects if item["suffix"] in [".txt", ".md", ".doc", ".docx"]]
         if not found_files:
             found_files = all_file_objects
     else:
-        # Code mode: filter out report text files (.txt files that are converted reports)
-        code_files = [
+        # Code mode: try strict allowlist of programming source code extensions + notebooks
+        found_files = [
             item for item in all_file_objects 
-            if item["suffix"] != ".txt" or not item["path"].lower().startswith("report")
+            if item["suffix"] in CODE_EXTENSIONS or item["suffix"] == ".ipynb"
         ]
-        # Further refine: if code files exist (e.g. .py, .js, .java, etc.), exclude all .txt files
-        strict_code = [item for item in all_file_objects if item["suffix"] != ".txt"]
-        if strict_code:
-            found_files = strict_code
-        elif code_files:
-            found_files = code_files
-        else:
-            return {
-                "mainName": "No code files found",
-                "content": "// No source code files (.py, .js, .java, etc.) found in this submission.\n// Only text/report files were uploaded for this batch.",
-                "files": []
-            }
+        if not found_files:
+            # Fallback: return all available files so user always gets content
+            found_files = all_file_objects
 
     if len(found_files) == 1:
         return {
@@ -322,13 +327,13 @@ def get_pair_files(cohort_id: str, batch_id: str, pair_id: str):
         "aFileName": a_data["mainName"] or "(no file)",
         "aContent": a_data["content"] or "File not available — run may have been before file persistence was added.",
         "aFiles": a_data["files"],
-        "aGithubLink": a_links["github_link"] if mode == "code" else "",
-        "aDocLink": a_links["doc_link"] if mode == "report" else "",
+        "aGithubLink": a_links["github_link"],
+        "aDocLink": a_links["doc_link"],
         "bFileName": b_data["mainName"] or "(no file)",
         "bContent": b_data["content"] or "File not available — run may have been before file persistence was added.",
         "bFiles": b_data["files"],
-        "bGithubLink": b_links["github_link"] if mode == "code" else "",
-        "bDocLink": b_links["doc_link"] if mode == "report" else "",
+        "bGithubLink": b_links["github_link"],
+        "bDocLink": b_links["doc_link"],
         "matches": pair.get("matches", []),
         "pairType": pair.get("type", "Code"),
     }
@@ -550,7 +555,16 @@ async def run_csv_comparison(
     report_tasks = parsed["report_tasks"]
 
     if not code_tasks and not report_tasks:
-        raise HTTPException(400, "No valid GitHub URLs or Google Doc/Drive links found in the uploaded CSV file.")
+        row_count = len(parsed.get("rows", []))
+        fields = [str(f) for f in (parsed.get("rows", [{}])[0].keys() if parsed.get("rows") else [])]
+        raise HTTPException(
+            400,
+            f"No valid GitHub URLs or Google Doc/Drive links found in the uploaded CSV file. "
+            f"The file contained {row_count} rows with columns: {fields}. "
+            f"Expected a column containing GitHub repo URLs and/or Google Docs/Drive links. "
+            f"Check that the CSV has columns like 'github_url', 'report_url', or a 'url' column "
+            f"containing those links."
+        )
 
     if parsed["detected_title"] and parsed["detected_title"] != "CSV Batch":
         batch_label = parsed["detected_title"]

@@ -1,10 +1,13 @@
 """
 CSV Processing module for 10 Academy CSV exports.
 Clones GitHub repos and downloads Google Docs/Drive links in parallel.
+
+The parse_csv_submissions function mirrors the robust logic in process_csv.py
+so that the same CSV file that works on the command-line also works when
+uploaded through the UI.
 """
 import csv
 import io
-import json
 import re
 import shutil
 import subprocess
@@ -61,11 +64,11 @@ def clone_github_repo(student_folder_name: str, github_url: str, code_dir: Path)
     if student_dir.exists():
         return True
     try:
-        res = subprocess.run(
+        subprocess.run(
             ["git", "clone", "--depth", "1", github_url, str(student_dir)],
             check=True,
             capture_output=True,
-            timeout=60,
+            timeout=120,
         )
         git_folder = student_dir / ".git"
         if git_folder.exists():
@@ -79,57 +82,92 @@ def clone_github_repo(student_folder_name: str, github_url: str, code_dir: Path)
         return False
 
 
-def parse_csv_submissions(csv_content: str):
+def parse_csv_submissions(csv_content: str) -> dict:
     """
     Parses CSV content and extracts student submissions, GitHub links, and Report links.
     Detects standard 10 Academy CSV columns automatically.
+
+    This uses the same robust detection logic as process_csv.py:
+    - Finds the student ID column by checking known column names first, then fuzzy fallback.
+    - Finds the GitHub URL column and report/drive column by name matching.
+    - Falls back to scanning ALL columns per-row for URLs if dedicated columns aren't found.
+    - Routes each URL to the correct bucket (code vs report) based on the URL domain.
     """
     f = io.StringIO(csv_content)
     reader = csv.DictReader(f)
     rows = list(reader)
 
     if not rows:
-        return {"rows": [], "code_tasks": {}, "report_tasks": {}, "detected_title": "CSV Batch"}
+        return {
+            "rows": [],
+            "code_tasks": {},
+            "report_tasks": {},
+            "submissions_list": [],
+            "detected_title": "CSV Batch",
+        }
 
     original_fields = reader.fieldnames or []
     fieldnames = [fn.lower().strip() for fn in original_fields]
 
+    # ── Student name / ID column detection ──────────────────────────────────
     name_col = None
+    # Exact known names first
     for orig, fn in zip(original_fields, fieldnames):
-        if fn in ["trainee_id", "all_user_id", "user_id", "student_id", "student_name", "student", "full_name"]:
+        if fn in ["trainee_id", "all_user_id", "user_id", "student_id",
+                  "student_name", "student", "full_name"]:
             name_col = orig
             break
 
+    # Fuzzy fallback: any column that looks like a name/user/id field
     if not name_col:
         for orig, fn in zip(original_fields, fieldnames):
-            if ("name" in fn or "user" in fn or "id" in fn) and "category" not in fn and "title" not in fn and "submission" not in fn:
+            if (
+                ("name" in fn or "user" in fn or "id" in fn)
+                and "category" not in fn
+                and "title" not in fn
+                and "submission" not in fn
+                and "url" not in fn
+            ):
                 name_col = orig
                 break
 
+    # Last resort: first column
     if not name_col:
         name_col = original_fields[0]
 
+    # ── GitHub / Report column detection ────────────────────────────────────
     github_col = None
     report_col = None
+    interim_report_col = None
+    non_technical_col = None
 
     for orig, fn in zip(original_fields, fieldnames):
         if fn == "github_url" or "github" in fn:
             github_col = orig
+        elif ("interim" in fn and ("report" in fn or "submission" in fn or "doc" in fn or "drive" in fn or "url" in fn)):
+            interim_report_col = orig
         elif fn in ["report_url", "doc_link", "drive_link"] or "report" in fn or "drive" in fn:
-            report_col = orig
+            if not non_technical_col:
+                non_technical_col = orig
 
-    if not github_col:
+    # Prefer interim report link over non-technical report link
+    report_col = interim_report_col or non_technical_col
+
+    # Fallback: a column literally named "url" — we'll smart-route per row
+    fallback_url_col = None
+    if not github_col or not report_col:
         for orig, fn in zip(original_fields, fieldnames):
             if fn == "url":
-                github_col = orig
+                fallback_url_col = orig
                 break
+        # Also scan all columns for a URL-looking column name
+        if not fallback_url_col:
+            for orig, fn in zip(original_fields, fieldnames):
+                if "url" in fn and orig != name_col:
+                    fallback_url_col = orig
+                    break
 
-    if not report_col:
-        for orig, fn in zip(original_fields, fieldnames):
-            if fn == "url":
-                report_col = orig
-                break
-
+    # ── Detect a batch title from category_name / title column ──────────────
     category_title = "CSV Batch"
     for r in rows:
         c_name = r.get("category_name") or r.get("title")
@@ -137,36 +175,69 @@ def parse_csv_submissions(csv_content: str):
             category_title = c_name.strip()
             break
 
-    code_tasks = {}
-    report_tasks = {}
-    submissions_dict = {}
+    # ── Build task dicts ─────────────────────────────────────────────────────
+    code_tasks: dict[str, str] = {}
+    report_tasks: dict[str, str] = {}
+    submissions_dict: dict[str, dict] = {}
 
     for idx, row in enumerate(rows, 1):
-        raw_id = row.get(name_col, f"student_{idx}").strip()
-        student_folder_name = f"student_{normalize_student_name(raw_id)}"
+        raw_id = (row.get(name_col) or f"student_{idx}").strip()
+        clean_id = normalize_student_name(raw_id) or str(idx)
+        if clean_id.startswith("student_"):
+            student_folder_name = clean_id
+        else:
+            student_folder_name = f"student_{clean_id}"
 
         if student_folder_name not in submissions_dict:
             submissions_dict[student_folder_name] = {
-                "student_name": student_folder_name,
+                "student_name": raw_id,
                 "github_link": "",
-                "doc_link": ""
+                "doc_link": "",
             }
 
-        gh = row.get(github_col, "").strip() if github_col else ""
-        url_val = row.get("url", "").strip()
-        if not gh and "github.com" in url_val.lower():
-            gh = url_val
+        # Collect candidate URLs for this row from dedicated columns
+        gh = (row.get(github_col) or "").strip() if github_col else ""
+        rep = (row.get(report_col) or "").strip() if report_col else ""
 
+        # Also pull from the fallback URL column if present
+        fallback_val = (row.get(fallback_url_col) or "").strip() if fallback_url_col else ""
+
+        # Smart-route the fallback URL based on domain
+        if fallback_val:
+            if not gh and "github.com" in fallback_val.lower():
+                gh = fallback_val
+            elif not rep and (
+                "docs.google.com" in fallback_val.lower()
+                or "drive.google.com" in fallback_val.lower()
+            ):
+                rep = fallback_val
+
+        # Last-resort: scan every column value in the row for URLs we haven't caught yet
+        if not gh or not rep:
+            for col_orig, col_fn in zip(original_fields, fieldnames):
+                if col_orig == name_col:
+                    continue
+                val = (row.get(col_orig) or "").strip()
+                if not val:
+                    continue
+                if not gh and "github.com" in val.lower():
+                    gh = val
+                elif not rep and (
+                    "docs.google.com" in val.lower()
+                    or "drive.google.com" in val.lower()
+                ):
+                    rep = val
+
+        # Commit to task dicts (first submission per student wins)
         if gh and "github.com" in gh.lower():
             submissions_dict[student_folder_name]["github_link"] = gh
             if student_folder_name not in code_tasks:
                 code_tasks[student_folder_name] = gh
 
-        rep = row.get(report_col, "").strip() if report_col else ""
-        if not rep and ("docs.google.com" in url_val.lower() or "drive.google.com" in url_val.lower()):
-            rep = url_val
-
-        if rep and ("docs.google.com" in rep.lower() or "drive.google.com" in rep.lower()):
+        if rep and (
+            "docs.google.com" in rep.lower()
+            or "drive.google.com" in rep.lower()
+        ):
             submissions_dict[student_folder_name]["doc_link"] = rep
             if student_folder_name not in report_tasks:
                 report_tasks[student_folder_name] = rep
@@ -176,5 +247,5 @@ def parse_csv_submissions(csv_content: str):
         "code_tasks": code_tasks,
         "report_tasks": report_tasks,
         "submissions_list": list(submissions_dict.values()),
-        "detected_title": category_title
+        "detected_title": category_title,
     }
