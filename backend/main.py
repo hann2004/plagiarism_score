@@ -176,8 +176,10 @@ def _persist_student_files(submissions_dir: Path, cohort_id: str, batch_id: str,
 
 
 def _normalize_name(name: str) -> str:
-    s = name.lower().replace("_", " ").replace("-", " ").strip()
-    return re.sub(r'\b0+(\d+)', r'\1', s)
+    s = str(name).lower().replace("_", " ").replace("-", " ").strip()
+    s = re.sub(r'^(student|user|trainee|id)\b[\s_-]*', '', s)
+    s = re.sub(r'\b0+(\d+)', r'\1', s)
+    return s.strip()
 
 
 CODE_EXTENSIONS = {
@@ -279,26 +281,47 @@ def _read_student_files(cohort_id: str, batch_id: str, student_name: str, mode: 
 def _find_student_links(cohort_id: str, batch_id: str, student_name: str, student_data: dict) -> dict:
     github_link = ""
     doc_link = ""
-    
-    subs = storage.get_submissions(cohort_id, batch_id)
+
     target_norm = _normalize_name(student_name)
+    subs = storage.get_submissions(cohort_id, batch_id)
+
+    # Search current batch submissions first
     for s in subs:
-        if _normalize_name(s.get("student_name", "")) == target_norm:
-            github_link = s.get("github_link", "").strip()
-            doc_link = s.get("doc_link", "").strip()
-            break
-            
+        s_norm = _normalize_name(s.get("student_name", ""))
+        if s_norm == target_norm or (len(s_norm) >= 3 and (s_norm in target_norm or target_norm in s_norm)):
+            if not github_link and s.get("github_link"):
+                github_link = s.get("github_link", "").strip()
+            if not doc_link and s.get("doc_link"):
+                doc_link = s.get("doc_link", "").strip()
+
+    # Search all cohort submissions if links still missing
+    if not github_link or not doc_link:
+        index = storage._read_index()
+        cohort_batches = list(index.get("cohorts", {}).get(cohort_id, {}).get("batches", {}).keys())
+        for b_id in cohort_batches:
+            if b_id == batch_id:
+                continue
+            more_subs = storage.get_submissions(cohort_id, b_id)
+            for s in more_subs:
+                s_norm = _normalize_name(s.get("student_name", ""))
+                if s_norm == target_norm or (len(s_norm) >= 3 and (s_norm in target_norm or target_norm in s_norm)):
+                    if not github_link and s.get("github_link"):
+                        github_link = s.get("github_link", "").strip()
+                    if not doc_link and s.get("doc_link"):
+                        doc_link = s.get("doc_link", "").strip()
+
+    # Fallback to regex scanning file content for links
     content = student_data.get("content") or ""
     if not github_link:
         gh_match = re.search(r'https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', content)
         if gh_match:
             github_link = gh_match.group(0)
-            
+
     if not doc_link:
         doc_match = re.search(r'https?://(?:docs|drive)\.google\.com/[^\s\'"]+', content)
         if doc_match:
             doc_link = doc_match.group(0)
-            
+
     return {"github_link": github_link, "doc_link": doc_link}
 
 
@@ -551,123 +574,129 @@ async def run_csv_comparison(
         raise HTTPException(400, f"Could not read CSV file: {str(e)}")
 
     parsed = parse_csv_submissions(csv_text)
-    code_tasks = parsed["code_tasks"]
-    report_tasks = parsed["report_tasks"]
+    category_groups = parsed.get("category_groups", [])
 
-    if not code_tasks and not report_tasks:
+    if not category_groups:
+        raise HTTPException(400, "The uploaded CSV contains no data rows.")
+
+    total_code = sum(len(g["code_tasks"]) for g in category_groups)
+    total_report = sum(len(g["report_tasks"]) for g in category_groups)
+
+    if total_code == 0 and total_report == 0:
         row_count = len(parsed.get("rows", []))
         fields = [str(f) for f in (parsed.get("rows", [{}])[0].keys() if parsed.get("rows") else [])]
         raise HTTPException(
             400,
             f"No valid GitHub URLs or Google Doc/Drive links found in the uploaded CSV file. "
             f"The file contained {row_count} rows with columns: {fields}. "
-            f"Expected a column containing GitHub repo URLs and/or Google Docs/Drive links. "
-            f"Check that the CSV has columns like 'github_url', 'report_url', or a 'url' column "
-            f"containing those links."
+            f"Expected a column containing GitHub repo URLs and/or Google Docs/Drive links."
         )
 
-    if parsed["detected_title"] and parsed["detected_title"] != "CSV Batch":
-        batch_label = parsed["detected_title"]
-        # Generate clean IDs if default
-        clean_batch_id = re.sub(r'[^a-zA-Z0-9_]', '_', batch_label.lower()).strip('_')
-        if clean_batch_id:
-            batch_id = clean_batch_id[:32]
+    processed_batches = []
 
-    results = {"code": None, "report": None, "cohortId": cohort_id, "batchId": batch_id}
+    for cat_group in category_groups:
+        cat_batch_id = cat_group["batch_id"]
+        cat_batch_label = cat_group["batch_label"]
+        code_tasks = cat_group["code_tasks"]
+        report_tasks = cat_group["report_tasks"]
 
-    for sub in parsed["submissions_list"]:
-        storage.add_submission(cohort_id, batch_id, sub["student_name"], sub["github_link"], sub["doc_link"])
+        for sub in cat_group["submissions_list"]:
+            storage.add_submission(cohort_id, cat_batch_id, sub["student_name"], sub["github_link"], sub["doc_link"])
 
-    # 1. PROCESS CODE SUBMISSIONS IF AVAILABLE
-    if code_tasks:
-        run_dir_code = WORK_DIR / f"{cohort_id}__{batch_id}__code"
-        if run_dir_code.exists():
-            shutil.rmtree(run_dir_code)
-        submissions_dir_code = run_dir_code / "submissions"
-        submissions_dir_code.mkdir(parents=True, exist_ok=True)
+        results = {"code": None, "report": None, "cohortId": cohort_id, "batchId": cat_batch_id, "batchLabel": cat_batch_label}
 
-        with ThreadPoolExecutor(max_workers=12) as executor:
-            futures = [
-                executor.submit(clone_github_repo, s_name, url, submissions_dir_code)
-                for s_name, url in code_tasks.items()
-            ]
-            for f in as_completed(futures):
+        # 1. PROCESS CODE SUBMISSIONS FOR THIS CATEGORY
+        if code_tasks:
+            run_dir_code = WORK_DIR / f"{cohort_id}__{cat_batch_id}__code"
+            if run_dir_code.exists():
+                shutil.rmtree(run_dir_code)
+            submissions_dir_code = run_dir_code / "submissions"
+            submissions_dir_code.mkdir(parents=True, exist_ok=True)
+
+            with ThreadPoolExecutor(max_workers=12) as executor:
+                futures = [
+                    executor.submit(clone_github_repo, s_name, url, submissions_dir_code)
+                    for s_name, url in code_tasks.items()
+                ]
+                for f in as_completed(futures):
+                    try:
+                        f.result()
+                    except Exception:
+                        pass
+
+            student_folders_code = [p.name for p in submissions_dir_code.iterdir() if p.is_dir()]
+            if len(student_folders_code) >= 2:
+                convert_docx_to_txt(submissions_dir_code)
+                convert_ipynb_to_py(submissions_dir_code)
+                convert_pdf_to_txt(submissions_dir_code)
+                _persist_student_files(submissions_dir_code, cohort_id, cat_batch_id, "code")
+                clean_submissions_directory(submissions_dir_code, "code")
+
                 try:
-                    f.result()
-                except Exception:
-                    pass
+                    jplag_lang = detect_language(submissions_dir_code)
+                    jplag_res = run_jplag(JPLAG_JAR, submissions_dir_code, jplag_lang, run_dir_code / "result")
+                    saved_code = storage.save_run(
+                        cohort_id=cohort_id, cohort_label=cohort_label,
+                        batch_id=cat_batch_id, batch_label=cat_batch_label,
+                        mode="code", student_folders=student_folders_code,
+                        comparisons=jplag_res["comparisons"]
+                    )
+                    _persist_student_files(submissions_dir_code, cohort_id, cat_batch_id, "code")
+                    results["code"] = {"studentCount": saved_code["studentCount"], "pairCount": len(saved_code["pairs"])}
+                except Exception as e:
+                    results["code_error"] = str(e)
 
-        student_folders_code = [p.name for p in submissions_dir_code.iterdir() if p.is_dir()]
-        if len(student_folders_code) >= 2:
-            convert_docx_to_txt(submissions_dir_code)
-            convert_ipynb_to_py(submissions_dir_code)
-            convert_pdf_to_txt(submissions_dir_code)
-            _persist_student_files(submissions_dir_code, cohort_id, batch_id, "code")
-            clean_submissions_directory(submissions_dir_code, "code")
+        # 2. PROCESS REPORT SUBMISSIONS FOR THIS CATEGORY
+        if report_tasks:
+            run_dir_report = WORK_DIR / f"{cohort_id}__{cat_batch_id}__report"
+            if run_dir_report.exists():
+                shutil.rmtree(run_dir_report)
+            submissions_dir_report = run_dir_report / "submissions"
+            submissions_dir_report.mkdir(parents=True, exist_ok=True)
 
-            try:
-                jplag_lang = detect_language(submissions_dir_code)
-                jplag_res = run_jplag(JPLAG_JAR, submissions_dir_code, jplag_lang, run_dir_code / "result")
-                saved_code = storage.save_run(
-                    cohort_id=cohort_id, cohort_label=cohort_label,
-                    batch_id=batch_id, batch_label=batch_label,
-                    mode="code", student_folders=student_folders_code,
-                    comparisons=jplag_res["comparisons"]
-                )
-                _persist_student_files(submissions_dir_code, cohort_id, batch_id, "code")
-                results["code"] = {"studentCount": saved_code["studentCount"], "pairCount": len(saved_code["pairs"])}
-            except Exception as e:
-                results["code_error"] = str(e)
+            def download_job(s_name, url):
+                s_dir = submissions_dir_report / s_name
+                ok = download_google_doc_or_drive(url, s_dir, s_name)
+                if ok:
+                    convert_docx_to_txt(s_dir)
+                    return True
+                return False
 
-    # 2. PROCESS REPORT SUBMISSIONS IF AVAILABLE
-    if report_tasks:
-        run_dir_report = WORK_DIR / f"{cohort_id}__{batch_id}__report"
-        if run_dir_report.exists():
-            shutil.rmtree(run_dir_report)
-        submissions_dir_report = run_dir_report / "submissions"
-        submissions_dir_report.mkdir(parents=True, exist_ok=True)
+            with ThreadPoolExecutor(max_workers=12) as executor:
+                futures = [
+                    executor.submit(download_job, s_name, url)
+                    for s_name, url in report_tasks.items()
+                ]
+                for f in as_completed(futures):
+                    try:
+                        f.result()
+                    except Exception:
+                        pass
 
-        def download_job(s_name, url):
-            s_dir = submissions_dir_report / s_name
-            ok = download_google_doc_or_drive(url, s_dir, s_name)
-            if ok:
-                convert_docx_to_txt(s_dir)
-                return True
-            return False
+            student_folders_report = [p.name for p in submissions_dir_report.iterdir() if p.is_dir()]
+            if len(student_folders_report) >= 2:
+                convert_docx_to_txt(submissions_dir_report)
+                convert_ipynb_to_py(submissions_dir_report)
+                convert_pdf_to_txt(submissions_dir_report)
+                _persist_student_files(submissions_dir_report, cohort_id, cat_batch_id, "report")
+                clean_submissions_directory(submissions_dir_report, "report")
 
-        with ThreadPoolExecutor(max_workers=12) as executor:
-            futures = [
-                executor.submit(download_job, s_name, url)
-                for s_name, url in report_tasks.items()
-            ]
-            for f in as_completed(futures):
                 try:
-                    f.result()
-                except Exception:
-                    pass
+                    jplag_res = run_jplag(JPLAG_JAR, submissions_dir_report, "text", run_dir_report / "result")
+                    saved_report = storage.save_run(
+                        cohort_id=cohort_id, cohort_label=cohort_label,
+                        batch_id=cat_batch_id, batch_label=cat_batch_label,
+                        mode="report", student_folders=student_folders_report,
+                        comparisons=jplag_res["comparisons"]
+                    )
+                    _persist_student_files(submissions_dir_report, cohort_id, cat_batch_id, "report")
+                    results["report"] = {"studentCount": saved_report["studentCount"], "pairCount": len(saved_report["pairs"])}
+                except Exception as e:
+                    results["report_error"] = str(e)
 
-        student_folders_report = [p.name for p in submissions_dir_report.iterdir() if p.is_dir()]
-        if len(student_folders_report) >= 2:
-            convert_docx_to_txt(submissions_dir_report)
-            convert_ipynb_to_py(submissions_dir_report)
-            convert_pdf_to_txt(submissions_dir_report)
-            _persist_student_files(submissions_dir_report, cohort_id, batch_id, "report")
-            clean_submissions_directory(submissions_dir_report, "report")
+        processed_batches.append(results)
 
-            try:
-                jplag_res = run_jplag(JPLAG_JAR, submissions_dir_report, "text", run_dir_report / "result")
-                saved_report = storage.save_run(
-                    cohort_id=cohort_id, cohort_label=cohort_label,
-                    batch_id=batch_id, batch_label=batch_label,
-                    mode="report", student_folders=student_folders_report,
-                    comparisons=jplag_res["comparisons"]
-                )
-                _persist_student_files(submissions_dir_report, cohort_id, batch_id, "report")
-                results["report"] = {"studentCount": saved_report["studentCount"], "pairCount": len(saved_report["pairs"])}
-            except Exception as e:
-                results["report_error"] = str(e)
-
-    return {"ok": True, "results": results, "detectedTitle": parsed["detected_title"]}
+    return {"ok": True, "processedBatches": processed_batches, "categoryCount": len(processed_batches)}
 
 
 

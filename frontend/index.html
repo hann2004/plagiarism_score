@@ -713,10 +713,10 @@
 
 <script>
 const getApiBase = () => {
-  // Frontend is always served by the same FastAPI app as the backend
-  // (see app.mount("/", StaticFiles(...)) in main.py), so the API is
-  // always on the same origin. The only exception is opening the file
-  // directly from disk (file:// protocol) for quick local testing.
+  if (typeof window !== 'undefined' && window.BACKEND_URL) {
+    const custom = window.BACKEND_URL;
+    return custom.endsWith('/api') ? custom : `${custom.replace(/\/$/, '')}/api`;
+  }
   if (location.protocol === 'file:') return 'http://localhost:8000/api';
   return '/api';
 };
@@ -1347,8 +1347,8 @@ async function renderSmallMultiples(){
   const sel = document.getElementById('toggleClusterLabelsSelect');
   if (sel) sel.value = state.showLabels ? 'on' : 'off';
 
-  // Larger sphere nodes for easier targeting and high visibility
-  const sphereGeo = new THREE.SphereGeometry(4.8, 24, 24);
+  // Refined sphere nodes for clean scalability with large student batches
+  const sphereGeo = new THREE.SphereGeometry(3.0, 20, 20);
   
   // High contrast slate blue for node spheres
   const slateNodeMat = new THREE.MeshBasicMaterial({ 
@@ -1514,7 +1514,9 @@ async function renderSmallMultiples(){
         name: nodeName,
         compId: comp.id,
         baseScale: 1.0,
+        baseX: x,
         baseY: y,
+        baseZ: z,
         originalMat: meshMat
       };
 
@@ -1524,7 +1526,7 @@ async function renderSmallMultiples(){
 
       if (state.showLabels) {
         const headLabel = createNameSprite(nodeName);
-        headLabel.position.set(x, y + 6.0, z);
+        headLabel.position.set(x, y + 4.2, z);
         scene.add(headLabel);
         headLabelSprites.push({ sprite: headLabel, mesh: mesh });
       }
@@ -1590,9 +1592,10 @@ async function renderSmallMultiples(){
     box.getCenter(center);
     const size = new THREE.Vector3();
     box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z, 50);
+    const maxDim = Math.max(size.x, size.y, size.z, 30);
+    const fitDist = Math.max(65, maxDim * 0.95);
 
-    camera.position.set(center.x, center.y + maxDim * 0.75, center.z + maxDim * 1.5);
+    camera.position.set(center.x, center.y + fitDist * 0.35, center.z + fitDist);
     controls.target.copy(center);
     controls.update();
   }
@@ -1717,9 +1720,14 @@ async function renderSmallMultiples(){
 
     studentMeshes.forEach((mesh, idx) => {
       const baseScale = mesh.userData.baseScale || 1.0;
-      mesh.scale.setScalar(baseScale + Math.sin(clock * 3.0 + idx * 0.7) * 0.08);
-      if (mesh.userData.baseY !== undefined) {
-        mesh.position.y = mesh.userData.baseY + Math.sin(clock * 2.0 + idx * 0.5) * 1.0;
+      // Gentle breathing pulse
+      mesh.scale.setScalar(baseScale + Math.sin(clock * 2.5 + idx * 0.7) * 0.05);
+
+      // Smooth organic 3D floating motion (X, Y, Z wave drifting)
+      if (mesh.userData.baseX !== undefined) {
+        mesh.position.x = mesh.userData.baseX + Math.sin(clock * 1.2 + idx * 0.8) * 1.8;
+        mesh.position.y = mesh.userData.baseY + Math.cos(clock * 1.5 + idx * 0.6) * 1.8;
+        mesh.position.z = mesh.userData.baseZ + Math.sin(clock * 1.1 + idx * 0.9) * 1.2;
       }
     });
 
@@ -1739,7 +1747,7 @@ async function renderSmallMultiples(){
     });
 
     headLabelSprites.forEach(item => {
-      item.sprite.position.set(item.mesh.position.x, item.mesh.position.y + 5.2, item.mesh.position.z);
+      item.sprite.position.set(item.mesh.position.x, item.mesh.position.y + 4.2, item.mesh.position.z);
     });
 
     controls.update();
@@ -2562,27 +2570,30 @@ document.getElementById('submitCsvUpload').addEventListener('click', async () =>
     }
     const data = await res.json();
     
-    // Show partial results info (e.g. code worked but report didn't, or vice-versa)
-    const r = data.results || {};
+    const processed = data.processedBatches || [];
+    const catCount = data.categoryCount || processed.length || 1;
     let summaryParts = [];
-    if (r.code) summaryParts.push(`Code: ${r.code.studentCount} students, ${r.code.pairCount} pairs`);
-    if (r.code_error) summaryParts.push(`<span style="color:var(--med)">Code error: ${r.code_error.slice(0, 100)}</span>`);
-    if (r.report) summaryParts.push(`Report: ${r.report.studentCount} students, ${r.report.pairCount} pairs`);
-    if (r.report_error) summaryParts.push(`<span style="color:var(--med)">Report error: ${r.report_error.slice(0, 100)}</span>`);
+    processed.forEach(r => {
+      const bName = r.batchLabel || r.batchId;
+      if (r.code) summaryParts.push(`${bName} (Code: ${r.code.pairCount} pairs)`);
+      if (r.report) summaryParts.push(`${bName} (Report: ${r.report.pairCount} pairs)`);
+    });
 
-    status.innerHTML = `<span style="color:#059669; font-weight:600;">✓ Analysis complete! ${summaryParts.join(' | ')} — Loading dashboard...</span>`;
+    status.innerHTML = `<span style="color:#059669; font-weight:600;">✓ Analysis complete! Processed ${catCount} separate category batch(es)! (${summaryParts.join(' | ')}) — Loading dashboard...</span>`;
     
     setTimeout(async () => {
       closeUpload();
-      state.cohortId = r.cohortId || cohortId;
-      state.cohortLabel = cohortLabel;
-      state.batchId = r.batchId || batchId;
-      state.batchLabel = data.detectedTitle || batchLabel;
+      await loadCohorts();
+      if (processed.length > 0) {
+        state.cohortId = processed[0].cohortId || cohortId;
+        state.cohortLabel = cohortLabel;
+        state.batchId = processed[0].batchId || batchId;
+        state.batchLabel = processed[0].batchLabel || batchLabel;
+      }
       renderCrumbs();
-      setView('viewResults');
-      await loadBatch();
+      setView('viewBatches');
       document.getElementById('submitCsvUpload').disabled = false;
-    }, 1200);
+    }, 1500);
   } catch (e) {
     status.innerHTML = `<span style="color:var(--high); font-weight:600;">⚠ Could not connect to backend server. Make sure it is running and reachable.</span>`;
     document.getElementById('submitCsvUpload').disabled = false;

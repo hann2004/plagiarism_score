@@ -167,85 +167,97 @@ def parse_csv_submissions(csv_content: str) -> dict:
                     fallback_url_col = orig
                     break
 
-    # ── Detect a batch title from category_name / title column ──────────────
-    category_title = "CSV Batch"
-    for r in rows:
-        c_name = r.get("category_name") or r.get("title")
-        if c_name and c_name.strip():
-            category_title = c_name.strip()
+    # ── Group rows by category_name / title / assignment column if present ────
+    category_col = None
+    for orig, fn in zip(original_fields, fieldnames):
+        if fn in ["category_name", "category", "title", "assignment", "task_name"]:
+            category_col = orig
             break
 
-    # ── Build task dicts ─────────────────────────────────────────────────────
-    code_tasks: dict[str, str] = {}
-    report_tasks: dict[str, str] = {}
-    submissions_dict: dict[str, dict] = {}
+    category_rows_map = {}
+    if category_col:
+        for row in rows:
+            cat_val = (row.get(category_col) or "").strip()
+            if not cat_val:
+                cat_val = "CSV Batch"
+            if cat_val not in category_rows_map:
+                category_rows_map[cat_val] = []
+            category_rows_map[cat_val].append(row)
+    else:
+        # Fallback title detection
+        category_title = "CSV Batch"
+        for r in rows:
+            c_name = r.get("category_name") or r.get("title")
+            if c_name and c_name.strip():
+                category_title = c_name.strip()
+                break
+        category_rows_map[category_title] = rows
 
-    for idx, row in enumerate(rows, 1):
-        raw_id = (row.get(name_col) or f"student_{idx}").strip()
-        clean_id = normalize_student_name(raw_id) or str(idx)
-        if clean_id.startswith("student_"):
-            student_folder_name = clean_id
-        else:
-            student_folder_name = f"student_{clean_id}"
+    category_groups = []
+    for cat_name, cat_rows in category_rows_map.items():
+        cat_code_tasks = {}
+        cat_report_tasks = {}
+        cat_submissions_dict = {}
 
-        if student_folder_name not in submissions_dict:
-            submissions_dict[student_folder_name] = {
-                "student_name": raw_id,
-                "github_link": "",
-                "doc_link": "",
-            }
+        for idx, row in enumerate(cat_rows, 1):
+            raw_id = (row.get(name_col) or f"student_{idx}").strip()
+            clean_id = normalize_student_name(raw_id) or str(idx)
+            student_folder_name = clean_id if clean_id.startswith("student_") else f"student_{clean_id}"
 
-        # Collect candidate URLs for this row from dedicated columns
-        gh = (row.get(github_col) or "").strip() if github_col else ""
-        rep = (row.get(report_col) or "").strip() if report_col else ""
+            if student_folder_name not in cat_submissions_dict:
+                cat_submissions_dict[student_folder_name] = {
+                    "student_name": raw_id,
+                    "github_link": "",
+                    "doc_link": "",
+                }
 
-        # Also pull from the fallback URL column if present
-        fallback_val = (row.get(fallback_url_col) or "").strip() if fallback_url_col else ""
+            gh = (row.get(github_col) or "").strip() if github_col else ""
+            rep = (row.get(report_col) or "").strip() if report_col else ""
+            fallback_val = (row.get(fallback_url_col) or "").strip() if fallback_url_col else ""
 
-        # Smart-route the fallback URL based on domain
-        if fallback_val:
-            if not gh and "github.com" in fallback_val.lower():
-                gh = fallback_val
-            elif not rep and (
-                "docs.google.com" in fallback_val.lower()
-                or "drive.google.com" in fallback_val.lower()
-            ):
-                rep = fallback_val
+            if fallback_val:
+                if not gh and "github.com" in fallback_val.lower():
+                    gh = fallback_val
+                elif not rep and ("docs.google.com" in fallback_val.lower() or "drive.google.com" in fallback_val.lower()):
+                    rep = fallback_val
 
-        # Last-resort: scan every column value in the row for URLs we haven't caught yet
-        if not gh or not rep:
-            for col_orig, col_fn in zip(original_fields, fieldnames):
-                if col_orig == name_col:
-                    continue
-                val = (row.get(col_orig) or "").strip()
-                if not val:
-                    continue
-                if not gh and "github.com" in val.lower():
-                    gh = val
-                elif not rep and (
-                    "docs.google.com" in val.lower()
-                    or "drive.google.com" in val.lower()
-                ):
-                    rep = val
+            if not gh or not rep:
+                for col_orig, col_fn in zip(original_fields, fieldnames):
+                    if col_orig == name_col:
+                        continue
+                    val = (row.get(col_orig) or "").strip()
+                    if not val:
+                        continue
+                    if not gh and "github.com" in val.lower():
+                        gh = val
+                    elif not rep and ("docs.google.com" in val.lower() or "drive.google.com" in val.lower()):
+                        rep = val
 
-        # Commit to task dicts (first submission per student wins)
-        if gh and "github.com" in gh.lower():
-            submissions_dict[student_folder_name]["github_link"] = gh
-            if student_folder_name not in code_tasks:
-                code_tasks[student_folder_name] = gh
+            if gh and "github.com" in gh.lower():
+                cat_submissions_dict[student_folder_name]["github_link"] = gh
+                if student_folder_name not in cat_code_tasks:
+                    cat_code_tasks[student_folder_name] = gh
 
-        if rep and (
-            "docs.google.com" in rep.lower()
-            or "drive.google.com" in rep.lower()
-        ):
-            submissions_dict[student_folder_name]["doc_link"] = rep
-            if student_folder_name not in report_tasks:
-                report_tasks[student_folder_name] = rep
+            if rep and ("docs.google.com" in rep.lower() or "drive.google.com" in rep.lower()):
+                cat_submissions_dict[student_folder_name]["doc_link"] = rep
+                if student_folder_name not in cat_report_tasks:
+                    cat_report_tasks[student_folder_name] = rep
+
+        clean_cat_id = re.sub(r'[^a-zA-Z0-9_]', '_', cat_name.lower()).strip('_')[:32]
+        if not clean_cat_id:
+            clean_cat_id = "csv_batch"
+
+        category_groups.append({
+            "category_name": cat_name,
+            "batch_id": clean_cat_id,
+            "batch_label": cat_name,
+            "code_tasks": cat_code_tasks,
+            "report_tasks": cat_report_tasks,
+            "submissions_list": list(cat_submissions_dict.values())
+        })
 
     return {
         "rows": rows,
-        "code_tasks": code_tasks,
-        "report_tasks": report_tasks,
-        "submissions_list": list(submissions_dict.values()),
-        "detected_title": category_title,
+        "category_groups": category_groups,
+        "detected_title": category_groups[0]["category_name"] if category_groups else "CSV Batch"
     }
