@@ -1,5 +1,6 @@
 from pathlib import Path
 from collections import Counter
+from typing import Optional
 
 EXTENSIONS = {
     ".py": "python3",
@@ -7,13 +8,26 @@ EXTENSIONS = {
     ".cpp": "cpp",
     ".cc": "cpp",
     ".cxx": "cpp",
+    ".hpp": "cpp",
+    ".h": "cpp",
     ".c": "c",
     ".cs": "csharp",
     ".js": "javascript",
+    ".jsx": "javascript",
     ".ts": "typescript",
+    ".tsx": "typescript",
+    ".go": "go",
+    ".rs": "rust",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".scala": "scala",
+    ".r": "rlang",
+    ".R": "rlang",
+    ".txt": "text",
 }
 
-def detect_language(folder: Path) -> str:
+def detect_language(folder: Path) -> Optional[str]:
     counter = Counter()
 
     for file in folder.rglob("*"):
@@ -23,6 +37,6 @@ def detect_language(folder: Path) -> str:
                 counter[EXTENSIONS[ext]] += 1
 
     if not counter:
-        raise Exception("No supported files found")
+        return None
 
     return counter.most_common(1)[0][0]

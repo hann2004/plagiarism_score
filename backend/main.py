@@ -16,12 +16,13 @@ import shutil
 import zipfile
 import re
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from jplag_runner import run_jplag, JPlagError
+from jplag_runner import run_jplag, run_jplag_grouped, JPlagError
 from storage import Storage
 from language_detector import detect_language
 from docx_converter import convert_docx_to_txt
@@ -326,7 +327,7 @@ def _find_student_links(cohort_id: str, batch_id: str, student_name: str, studen
 
 
 @app.get("/api/cohorts/{cohort_id}/batches/{batch_id}/pairs/{pair_id}/files")
-def get_pair_files(cohort_id: str, batch_id: str, pair_id: str):
+def get_pair_files(cohort_id: str, batch_id: str, pair_id: str, view: Optional[str] = None):
     batch = storage.get_batch(cohort_id, batch_id)
     if not batch:
         raise HTTPException(404, "Batch not found.")
@@ -337,8 +338,11 @@ def get_pair_files(cohort_id: str, batch_id: str, pair_id: str):
             break
     if not pair:
         raise HTTPException(404, "Pair not found.")
-    # Determine which file type to show based on the pair's comparison type
-    mode = "report" if pair.get("type", "Code") == "Report" else "code"
+    # Determine which file type to show based on requested view or pair's comparison type
+    if view:
+        mode = "report" if view.lower() == "report" else "code"
+    else:
+        mode = "report" if pair.get("type", "Code") == "Report" else "code"
     a_data = _read_student_files(cohort_id, batch_id, pair["a"], mode)
     b_data = _read_student_files(cohort_id, batch_id, pair["b"], mode)
     a_links = _find_student_links(cohort_id, batch_id, pair["a"], a_data)
@@ -471,14 +475,9 @@ async def run_comparison(
 
     if mode == "report":
         jplag_language = "text"
-    else:
-        try:
-            jplag_language = detect_language(submissions_dir)
-        except Exception as e:
-            raise HTTPException(400, f"Language detection failed: {str(e)}")
-
+    
     try:
-        result = run_jplag(JPLAG_JAR, submissions_dir, jplag_language, run_dir / "result")
+        result = run_jplag_grouped(JPLAG_JAR, submissions_dir, run_dir / "result", mode=mode)
     except JPlagError as e:
         raise HTTPException(500, str(e))
 
@@ -527,16 +526,9 @@ async def run_fetched_comparison(
     _persist_student_files(submissions_dir, cohort_id, batch_id, mode)
     clean_submissions_directory(submissions_dir, mode)
 
-    if mode == "report":
-        jplag_language = "text"
-    else:
-        try:
-            jplag_language = detect_language(submissions_dir)
-        except Exception as e:
-            raise HTTPException(400, f"Language detection failed: {str(e)}")
-
     try:
-        result = run_jplag(JPLAG_JAR, submissions_dir, jplag_language, run_dir / "result")
+        initial_skipped = fetch_result.get("skipped_students", [])
+        result = run_jplag_grouped(JPLAG_JAR, submissions_dir, run_dir / "result", mode=mode, initial_skipped=initial_skipped)
     except JPlagError as e:
         raise HTTPException(500, str(e))
 
@@ -637,8 +629,7 @@ async def run_csv_comparison(
                 clean_submissions_directory(submissions_dir_code, "code")
 
                 try:
-                    jplag_lang = detect_language(submissions_dir_code)
-                    jplag_res = run_jplag(JPLAG_JAR, submissions_dir_code, jplag_lang, run_dir_code / "result")
+                    jplag_res = run_jplag_grouped(JPLAG_JAR, submissions_dir_code, run_dir_code / "result", mode="code")
                     saved_code = storage.save_run(
                         cohort_id=cohort_id, cohort_label=cohort_label,
                         batch_id=cat_batch_id, batch_label=cat_batch_label,
@@ -688,7 +679,7 @@ async def run_csv_comparison(
                 clean_submissions_directory(submissions_dir_report, "report")
 
                 try:
-                    jplag_res = run_jplag(JPLAG_JAR, submissions_dir_report, "text", run_dir_report / "result")
+                    jplag_res = run_jplag_grouped(JPLAG_JAR, submissions_dir_report, run_dir_report / "result", mode="report")
                     saved_report = storage.save_run(
                         cohort_id=cohort_id, cohort_label=cohort_label,
                         batch_id=cat_batch_id, batch_label=cat_batch_label,

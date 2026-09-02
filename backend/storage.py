@@ -149,10 +149,16 @@ class Storage:
         if skipped_students is not None:
             skipped_by_mode = existing.setdefault("skippedStudentsByMode", {})
             skipped_by_mode[mode] = skipped_students
-            all_skipped = set()
+            all_skipped = {}
             for s_list in skipped_by_mode.values():
-                all_skipped.update(s_list)
-            existing["skippedStudents"] = sorted(list(all_skipped))
+                for item in s_list:
+                    if isinstance(item, dict):
+                        name = item.get("name", "Unknown")
+                        reason = item.get("reason", "Unknown reason")
+                        all_skipped[name] = f"{name} — {reason}"
+                    else:
+                        all_skipped[str(item)] = str(item)
+            existing["skippedStudents"] = sorted(list(all_skipped.values()))
 
         if analyzed_students is not None:
             analyzed_by_mode = existing.setdefault("analyzedStudentsByMode", {})

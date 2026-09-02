@@ -270,12 +270,85 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
                 analyzed_students.add(b)
 
     all_student_folders = set(p.name for p in submissions_dir.iterdir() if p.is_dir())
-    skipped_students = sorted(list(all_student_folders - analyzed_students))
+    unparsed_students = sorted(list(all_student_folders - analyzed_students))
+    skipped_students_details = [{"name": s, "reason": "No valid tokenized source lines found"} for s in unparsed_students]
 
     return {
         "comparisons": comparisons,
         "analyzedStudents": sorted(list(analyzed_students)),
-        "skippedStudents": skipped_students,
+        "skippedStudents": skipped_students_details,
+    }
+
+
+def run_jplag_grouped(jar_path: Path, submissions_dir: Path, output_dir: Path, mode: str = "code", initial_skipped: list = None) -> dict:
+    """
+    Groups student submissions by their detected language, runs JPlag per group,
+    and merges the resulting comparisons, analyzed students, and detailed skipped students.
+    """
+    from language_detector import detect_language
+    
+    skipped_records = []
+    if initial_skipped:
+        for s in initial_skipped:
+            if isinstance(s, dict):
+                skipped_records.append(s)
+            else:
+                skipped_records.append({"name": str(s), "reason": "Skipped during fetch"})
+
+    student_folders = [p for p in submissions_dir.iterdir() if p.is_dir()]
+    
+    if mode == "report":
+        if len(student_folders) < 2:
+            for sf in student_folders:
+                skipped_records.append({"name": sf.name, "reason": "Fewer than 2 student reports available for comparison"})
+            return {"comparisons": [], "analyzedStudents": [sf.name for sf in student_folders], "skippedStudents": skipped_records}
+        
+        res = run_jplag(jar_path, submissions_dir, "text", output_dir / "report_result")
+        res["skippedStudents"] = skipped_records + res.get("skippedStudents", [])
+        return res
+
+    # Mode is "code": Detect language per student folder
+    lang_groups = {}
+    for sf in student_folders:
+        lang = detect_language(sf)
+        if not lang:
+            skipped_records.append({"name": sf.name, "reason": "No supported source code files found"})
+        else:
+            lang_groups.setdefault(lang, []).append(sf)
+
+    all_comparisons = []
+    analyzed_set = set()
+
+    for lang, folders in lang_groups.items():
+        if len(folders) < 2:
+            for sf in folders:
+                skipped_records.append({"name": sf.name, "reason": f"Only 1 student submitted {lang} code (minimum 2 needed for comparison)"})
+            continue
+
+        # Prepare sub-submissions directory for this language group
+        group_sub_dir = output_dir.parent / f"group_sub_{lang}"
+        if group_sub_dir.exists():
+            shutil.rmtree(group_sub_dir)
+        group_sub_dir.mkdir(parents=True, exist_ok=True)
+
+        for sf in folders:
+            shutil.copytree(sf, group_sub_dir / sf.name)
+
+        group_out_dir = output_dir / f"group_res_{lang}"
+        try:
+            res = run_jplag(jar_path, group_sub_dir, lang, group_out_dir)
+            all_comparisons.extend(res.get("comparisons", []))
+            analyzed_set.update(res.get("analyzedStudents", []))
+            for sk in res.get("skippedStudents", []):
+                skipped_records.append(sk)
+        except Exception as e:
+            for sf in folders:
+                skipped_records.append({"name": sf.name, "reason": f"JPlag failed for {lang}: {str(e)}"})
+
+    return {
+        "comparisons": all_comparisons,
+        "analyzedStudents": sorted(list(analyzed_set)),
+        "skippedStudents": skipped_records,
     }
 
 
