@@ -196,13 +196,10 @@ def _read_student_files(cohort_id: str, batch_id: str, student_name: str, mode: 
     mode='code'   → returns source code files (excludes converted .txt reports)
     mode='report' → returns .txt files (the converted report text)
     """
-    # Look first in requested mode directory, then other mode directory, then generic batch directory
-    other_mode = "report" if mode == "code" else "code"
+    # Look strictly in requested mode directory, then generic batch directory if mode directory missing
     batch_dirs = [
         FILES_DIR / f"{cohort_id}__{batch_id}__{mode}",
         WORK_DIR / f"{cohort_id}__{batch_id}__{mode}" / "submissions",
-        FILES_DIR / f"{cohort_id}__{batch_id}__{other_mode}",
-        WORK_DIR / f"{cohort_id}__{batch_id}__{other_mode}" / "submissions",
         FILES_DIR / f"{cohort_id}__{batch_id}",
     ]
     
@@ -380,8 +377,9 @@ def clean_submissions_directory(submissions_dir: Path, mode: str):
         name_lower = file_path.name.lower()
         suffix = file_path.suffix.lower()
 
-        # ALWAYS strip READMEs, licenses, changelogs, and markdown documentation in ALL modes
-        if name_lower.startswith("readme") or name_lower.startswith("license") or name_lower.startswith("changelog") or suffix in [".md", ".markdown", ".rst"]:
+        # In code mode, strip READMEs, licenses, changelogs, and markdown documentation.
+        # In report mode, retain .md/.markdown files as valid report text.
+        if mode == "code" and (name_lower.startswith("readme") or name_lower.startswith("license") or name_lower.startswith("changelog") or suffix in [".md", ".markdown", ".rst"]):
             try:
                 file_path.unlink()
             except Exception:
@@ -473,9 +471,6 @@ async def run_comparison(
     _persist_student_files(submissions_dir, cohort_id, batch_id, mode)
     clean_submissions_directory(submissions_dir, mode)
 
-    if mode == "report":
-        jplag_language = "text"
-    
     try:
         result = run_jplag_grouped(JPLAG_JAR, submissions_dir, run_dir / "result", mode=mode)
     except JPlagError as e:
@@ -565,7 +560,12 @@ async def run_csv_comparison(
     """
     try:
         content_bytes = await csv_file.read()
-        csv_text = content_bytes.decode("utf-8-sig", errors="replace")
+        # Excel commonly exports CSV files as UTF-16, while browser exports are
+        # usually UTF-8 with an optional BOM.
+        if content_bytes.startswith((b"\xff\xfe", b"\xfe\xff")):
+            csv_text = content_bytes.decode("utf-16", errors="replace")
+        else:
+            csv_text = content_bytes.decode("utf-8-sig", errors="replace")
     except Exception as e:
         raise HTTPException(400, f"Could not read CSV file: {str(e)}")
 
@@ -642,6 +642,11 @@ async def run_csv_comparison(
                     results["code"] = {"studentCount": saved_code["studentCount"], "pairCount": len(saved_code["pairs"])}
                 except Exception as e:
                     results["code_error"] = str(e)
+            else:
+                results["code_error"] = (
+                    f"Only {len(student_folders_code)} GitHub repository could be fetched; "
+                    "at least 2 are required for comparison."
+                )
 
         # 2. PROCESS REPORT SUBMISSIONS FOR THIS CATEGORY
         if report_tasks:
@@ -692,6 +697,11 @@ async def run_csv_comparison(
                     results["report"] = {"studentCount": saved_report["studentCount"], "pairCount": len(saved_report["pairs"])}
                 except Exception as e:
                     results["report_error"] = str(e)
+            else:
+                results["report_error"] = (
+                    f"Only {len(student_folders_report)} report could be downloaded; "
+                    "at least 2 are required for comparison."
+                )
 
         processed_batches.append(results)
 

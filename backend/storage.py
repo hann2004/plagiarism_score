@@ -164,27 +164,33 @@ class Storage:
             analyzed_by_mode = existing.setdefault("analyzedStudentsByMode", {})
             analyzed_by_mode[mode] = analyzed_students
 
-        # index existing pairs by (a,b,mode) so re-running one mode (code vs report)
-        # doesn't wipe out results already stored for the other mode
-        existing_by_key = {(p["a"], p["b"], p["type"]): p for p in existing["pairs"]}
+        # Re-running a mode (code vs report) should replace prior comparisons for THIS mode
+        # so removed students don't leave stale pairs behind, while keeping the other mode's pairs
+        # and preserving status (Pending/Reviewed/Ignored) for remaining pairs.
+        target_type = "Code" if mode == "code" else "Report"
+        prior_mode_pairs = { (p["a"], p["b"]): p for p in existing["pairs"] if p.get("type") == target_type }
+        other_mode_pairs = [ p for p in existing["pairs"] if p.get("type") != target_type ]
+
+        new_mode_pairs = []
         for c in comparisons:
-            key = (c["a"], c["b"], mode)
-            reverse_key = (c["b"], c["a"], mode)
-            prior = existing_by_key.get(key) or existing_by_key.get(reverse_key)
+            key = (c["a"], c["b"])
+            reverse_key = (c["b"], c["a"])
+            prior = prior_mode_pairs.get(key) or prior_mode_pairs.get(reverse_key)
             pair_id = prior["id"] if prior else f"{cohort_id}-{batch_id}-{mode}-{c['a']}-{c['b']}"
             status = prior["status"] if prior else "Pending"
             entry = {
                 "id": pair_id,
                 "a": c["a"], "b": c["b"],
-                "type": "Code" if mode == "code" else "Report",
+                "type": target_type,
                 "similarity": c["similarity"],
                 "matches": c["matches"],
+                "synthetic": c.get("synthetic", False),
                 "status": status,
                 "crossBatch": False,
             }
-            existing_by_key[key] = entry
+            new_mode_pairs.append(entry)
 
-        existing["pairs"] = list(existing_by_key.values())
+        existing["pairs"] = other_mode_pairs + new_mode_pairs
 
         with open(self._batch_path(cohort_id, batch_id), "w") as f:
             json.dump(existing, f, indent=2)

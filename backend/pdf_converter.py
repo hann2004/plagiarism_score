@@ -44,9 +44,9 @@ def convert_pdf_to_txt(folder: Path):
                 timeout=30
             )
             if res.returncode == 0 and temp_txt.exists():
-                text_content = temp_txt.read_text(errors="replace")
+                text_content = temp_txt.read_text(errors="replace").replace("\x0c", "\n")
                 if text_content.strip():
-                    txt_path.write_text(text_content, encoding="utf-8")
+                    txt_path.write_text(text_content.strip() + "\n", encoding="utf-8")
                     converted = True
                 temp_txt.unlink(missing_ok=True)
         except Exception as e:
@@ -64,9 +64,9 @@ def convert_pdf_to_txt(folder: Path):
                     text = page.extract_text()
                     if text:
                         extracted_pages.append(text)
-                full_text = "\n".join(extracted_pages)
+                full_text = "\n".join(extracted_pages).replace("\x0c", "\n")
                 if full_text.strip():
-                    txt_path.write_text(full_text, encoding="utf-8")
+                    txt_path.write_text(full_text.strip() + "\n", encoding="utf-8")
                     converted = True
             except Exception as e:
                 print(f"Warning: pypdf fallback failed for {file_path}: {e}")
@@ -75,5 +75,14 @@ def convert_pdf_to_txt(folder: Path):
         if converted and file_path.suffix.lower() == ".pdf":
             try:
                 file_path.unlink()
+            except Exception:
+                pass
+        elif not converted:
+            # If conversion failed and file contains binary PDF bytes, remove to avoid JPlag skips
+            try:
+                with open(file_path, "rb") as f:
+                    header = f.read(4)
+                    if header == b"%PDF":
+                        file_path.unlink()
             except Exception:
                 pass

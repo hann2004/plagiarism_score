@@ -4,6 +4,7 @@ FROM python:3.12-slim
 # Install Java JRE (default-jre-headless), wget, and utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
     default-jre-headless \
+    poppler-utils \
     git \
     wget \
     curl \

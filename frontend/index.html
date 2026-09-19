@@ -339,8 +339,10 @@
   .diff-pane pre { margin: 0; padding: 12px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text-dark); counter-reset: line; }
   .diff-pane .line { display: block; }
   .diff-pane .line::before { counter-increment: line; content: counter(line); display: inline-block; width: 3em; margin-right: 12px; text-align: right; color: var(--faint); font-size: 11px; user-select: none; }
-  .diff-pane .line.match-active { background: #FEE2E2; border-left: 4px solid #DC2626; color: #991B1B; font-weight: 700; }
-  .diff-pane .line.match-other { background: #FEF2F2; border-left: 3px solid #FCA5A5; color: #7F1D1D; font-weight: 500; }
+  .diff-pane .line.match-active { background: #FECACA; border-left: 4px solid #DC2626; color: #991B1B; font-weight: 700; }
+  .diff-pane .line.match-other { background: #FEE2E2; border-left: 3px solid #EF4444; color: #991B1B; font-weight: 500; }
+  .diff-pane .line.line-added { background: #DCFCE7; border-left: 3px solid #22C55E; color: #166534; font-weight: 500; }
+  .diff-pane .line.line-uncopied { background: transparent; border-left: 3px solid transparent; color: var(--text-dark); font-weight: 400; }
   .diff-minimap { position: absolute; right: 0; top: 36px; bottom: 0; width: 8px; background: var(--surface-3); }
   .diff-minimap-tick { position: absolute; right: 0; width: 8px; background: var(--high); opacity: 0.7; border-radius: 1px; min-height: 2px; }
   .drawer-actions { display: flex; gap: 12px; padding: 14px 24px; background: var(--surface); border-top: 1px solid var(--line); flex-shrink: 0; }
@@ -445,25 +447,18 @@
 
       <div class="controls">
         <input class="search" id="search" placeholder="Search student name…">
-        
-        <div class="filter-group">
-          <span class="filter-label">Type:</span>
-          <button class="chip active" data-type="all">All</button>
-          <button class="chip" data-type="Code">Code</button>
-          <button class="chip" data-type="Report">Report</button>
-        </div>
 
         <div class="filter-group">
           <span class="filter-label">Similarity:</span>
           <button class="chip sim-chip" data-threshold="0">All</button>
-          <button class="chip sim-chip" data-threshold="60">60%+</button>
-          <button class="chip sim-chip active" data-threshold="70">70%+</button>
+          <button class="chip sim-chip active" data-threshold="60">60%+</button>
+          <button class="chip sim-chip" data-threshold="70">70%+</button>
           <button class="chip sim-chip" data-threshold="80">80%+</button>
           <button class="chip sim-chip" data-threshold="90">90%+</button>
         </div>
 
         <div class="slider-wrap">
-          Threshold <input type="range" min="0" max="95" value="70" id="thresholdSlider"><span class="mono" id="sliderVal">70%</span>
+          Threshold <input type="range" min="0" max="95" value="60" id="thresholdSlider"><span class="mono" id="sliderVal">60%</span>
         </div>
       </div>
 
@@ -484,110 +479,111 @@
         <button class="btn" style="margin-left: auto; color: var(--high); border-color: var(--primary-border);" id="deleteBatchBtn">Delete Comparison</button>
       </div>
 
-      <!-- Panel 1: 3D Cluster View -->
-      <div id="panelClusters">
-        <div id="clustersSplitWrap" style="display: flex; gap: 14px; width: 100%; height: 620px; position: relative; overflow: hidden; align-items: stretch;">
-          <!-- 3D Canvas Column -->
-          <div id="clusters3dCol" style="flex: 1; height: 100%; min-width: 240px; position: relative; overflow: hidden;">
+      <!-- Results View Split Wrap (Shared between 3D Clusters and Data Table) -->
+      <div id="clustersSplitWrap" style="display: flex; gap: 14px; width: 100%; height: 620px; position: relative; overflow: hidden; align-items: stretch;">
+        <!-- Left Main Content Column (3D Cluster Canvas OR Data Table) -->
+        <div id="resultsMainCol" style="flex: 1; height: 100%; min-width: 240px; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+
+          <!-- Panel 1: 3D Cluster View -->
+          <div id="panelClusters" style="width: 100%; height: 100%;">
             <div id="cluster3dContainer" style="width: 100%; height: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; position: relative; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.03);"></div>
+            <div class="empty" id="clustersEmpty" style="display:none; margin-top: 16px; padding: 40px 20px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+              <h4 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">No similarity connections match threshold (<span id="emptyThresholdText">90%</span>)</h4>
+              <p style="font-size: 13.5px; color: var(--muted); margin: 0 0 16px;">Try selecting a lower threshold filter to view student connections.</p>
+              <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                <button class="btn" onclick="setThresholdFilter(80)">80%+</button>
+                <button class="btn" onclick="setThresholdFilter(70)">70%+</button>
+                <button class="btn" onclick="setThresholdFilter(60)">60%+</button>
+                <button class="btn btn-primary" onclick="setThresholdFilter(0)">Show All Students</button>
+              </div>
+            </div>
+            <div class="orbit-tooltip" id="clusterNodeTooltip" style="position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.15s ease;"></div>
           </div>
 
-          <!-- Floating, Draggable & Resizable Side-by-Side Description & Diff Column -->
-          <div id="clusterSidePanel" style="width: 580px; min-width: 320px; max-width: calc(100% - 240px); height: 100%; display: none; background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); flex-direction: column; overflow: hidden; flex-shrink: 0; position: relative; z-index: 10;">
-            <!-- Panel Resize Handles -->
-            <div class="side-panel-resize-handle handle-left" title="Drag left edge to resize side-by-side with 3D cluster"></div>
-            <div class="side-panel-resize-handle handle-right" title="Drag right edge to resize panel"></div>
-
-            <div class="drawer-header" id="clusterSideHeader" style="padding: 12px 18px; cursor: ew-resize; user-select: none; background: var(--surface-2); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between;" title="Drag left or right to move side view & adjust cluster width side-by-side">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 11px; font-weight: 700; color: #334155; background: #E2E8F0; padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px; cursor: ew-resize;" title="Drag to adjust width side-by-side with 3D cluster">
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4h2v2H4V4zm6 0h2v2h-2V4zM4 7h2v2H4V7zm6 0h2v2H4v-2zm6 0h2v2h-2v-2z"/></svg> Move / Resize
-                </span>
-                <div>
-                  <h2 id="sideTitle" style="font-size: 16px; margin: 0; font-weight: 800; color: var(--text-dark);">—</h2>
-                  <div class="sub" id="sideSub" style="font-size: 12px; color: var(--muted); margin-top: 2px;">—</div>
-                </div>
+          <!-- Panel 2: Data Table -->
+          <div id="panelTable" style="display:none; width: 100%; height: 100%; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px;">
+            <table>
+              <thead><tr><th>Students</th><th>Type</th><th>Similarity</th><th>Status</th></tr></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+            <div id="tableCapNote" style="display:none; padding: 10px 14px; margin-top: 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; font-size: 12.5px; color: #D97706; font-weight: 500;"></div>
+            <div class="empty" id="emptyState" style="display:none; padding: 40px 20px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin-top: 16px;">
+              <h4 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">No student pairs match current filter criteria</h4>
+              <p style="font-size: 13.5px; color: var(--muted); margin: 0 0 16px;">Try adjusting the similarity threshold slider above.</p>
+              <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                <button class="btn" onclick="setThresholdFilter(70)">Show 70%+</button>
+                <button class="btn" onclick="setThresholdFilter(60)">Show 60%+</button>
+                <button class="btn btn-primary" onclick="setThresholdFilter(0)">Show All Students</button>
               </div>
-              <button class="drawer-close" id="sideClose" title="Close Panel">×</button>
-            </div>
-            <div class="student-links-bar" style="display: flex; gap: 12px; padding: 8px 20px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 11.5px; flex-wrap: wrap;">
-              <div style="flex: 1; min-width: 180px; display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 700; color: var(--text-dark);" id="sideLinkAName">Student A</span>
-                <span id="sideLinkABadges" style="display: inline-flex; gap: 4px;"></span>
-              </div>
-              <div style="flex: 1; min-width: 180px; display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 700; color: var(--text-dark);" id="sideLinkBName">Student B</span>
-                <span id="sideLinkBBadges" style="display: inline-flex; gap: 4px;"></span>
-              </div>
-            </div>
-            <div class="drawer-nav" style="padding: 8px 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-              <button id="sideMatchPrev" style="font-size: 12px; padding: 4px 8px;">◀ Prev</button>
-              <span class="nav-label" id="sideMatchLabel" style="font-size: 12px;">Match 1 / 1</span>
-              <button id="sideMatchNext" style="font-size: 12px; padding: 4px 8px;">Next ▶</button>
-              <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;" id="sideTypeToggleGroup">
-                <span style="font-size: 10.5px; font-weight: 600; color: var(--muted);">Type:</span>
-                <button class="chip side-type-chip active" data-type-view="code" style="padding: 3px 8px; font-size: 10.5px;">Code</button>
-                <button class="chip side-type-chip" data-type-view="report" style="padding: 3px 8px; font-size: 10.5px;">Report</button>
-              </div>
-              <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;" id="sideModeChipsGroup">
-                <button class="chip side-view-chip active" data-side-mode="matches" style="padding: 3px 8px; font-size: 10.5px; background: #FEF2F2; color: #DC2626; border-color: #FECACA;">Similarities</button>
-                <button class="chip side-view-chip" data-side-mode="diff" style="padding: 3px 8px; font-size: 10.5px;">Differences</button>
-                <button class="chip side-view-chip" data-side-mode="all" style="padding: 3px 8px; font-size: 10.5px;">Full File</button>
-              </div>
-              <span class="nav-label" id="sideMatchLinesSummary" style="font-size: 10.5px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-left: auto;"></span>
-            </div>
-            <div class="verdict-note" id="sideNote" style="margin: 8px 20px 0; font-size: 12px; padding: 8px 12px;"></div>
-            <div class="diff-body" style="flex: 1; overflow: hidden;">
-              <div class="diff-pane" id="sidePaneA">
-                <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;">
-                  <span id="sideStudentA" style="font-weight: 700;">Student A</span>
-                  <select id="sideSelectA" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; max-width: 170px; outline: none; cursor: pointer;"></select>
-                </div>
-                <pre id="sideContentA" style="font-size: 11.5px; margin: 0; padding: 10px;"></pre>
-              </div>
-              <div class="diff-pane" id="sidePaneB">
-                <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;">
-                  <span id="sideStudentB" style="font-weight: 700;">Student B</span>
-                  <select id="sideSelectB" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; max-width: 170px; outline: none; cursor: pointer;"></select>
-                </div>
-                <pre id="sideContentB" style="font-size: 11.5px; margin: 0; padding: 10px;"></pre>
-              </div>
-            </div>
-            <div class="drawer-actions" style="padding: 10px 20px;">
-              <button class="btn btn-primary" id="sideBtnConfirm" style="font-size: 12px; padding: 6px 12px;">Confirm Plagiarism</button>
-              <button class="btn" id="sideBtnClear" style="font-size: 12px; padding: 6px 12px;">Clear / False Positive</button>
             </div>
           </div>
+
         </div>
 
-        <!-- Bottom Controls Bar -->
-        <div class="empty" id="clustersEmpty" style="display:none; margin-top: 16px; padding: 40px 20px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
-          <h4 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">No similarity connections match threshold (<span id="emptyThresholdText">90%</span>)</h4>
-          <p style="font-size: 13.5px; color: var(--muted); margin: 0 0 16px;">Try selecting a lower threshold filter to view student connections.</p>
-          <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-            <button class="btn" onclick="setThresholdFilter(80)">80%+</button>
-            <button class="btn" onclick="setThresholdFilter(70)">70%+</button>
-            <button class="btn" onclick="setThresholdFilter(60)">60%+</button>
-            <button class="btn btn-primary" onclick="setThresholdFilter(0)">Show All Students</button>
-          </div>
-        </div>
-        <div class="orbit-tooltip" id="clusterNodeTooltip" style="position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity 0.15s ease;"></div>
-      </div>
+        <!-- Floating, Draggable & Resizable Side-by-Side Description & Diff Column -->
+        <div id="clusterSidePanel" style="width: 580px; min-width: 320px; max-width: calc(100% - 240px); height: 100%; display: none; background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); flex-direction: column; overflow: hidden; flex-shrink: 0; position: relative; z-index: 10;">
+          <!-- Panel Resize Handles -->
+          <div class="side-panel-resize-handle handle-left" title="Drag left edge to resize side-by-side with 3D cluster"></div>
+          <div class="side-panel-resize-handle handle-right" title="Drag right edge to resize panel"></div>
 
-      <!-- Panel 3: Data Table -->
-      <div id="panelTable" style="display:none;">
-        <table>
-          <thead><tr><th>Students</th><th>Type</th><th>Similarity</th><th>Status</th></tr></thead>
-          <tbody id="tbody"></tbody>
-        </table>
-        <div id="tableCapNote" style="display:none; padding: 10px 14px; margin-top: 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; font-size: 12.5px; color: #D97706; font-weight: 500;"></div>
-        <div class="empty" id="emptyState" style="display:none; padding: 40px 20px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin-top: 16px;">
-          <h4 style="font-size: 16px; font-weight: 700; color: var(--text-dark); margin: 0 0 8px;">No student pairs match current filter criteria</h4>
-          <p style="font-size: 13.5px; color: var(--muted); margin: 0 0 16px;">Try adjusting the similarity threshold slider above.</p>
-          <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
-            <button class="btn" onclick="setThresholdFilter(70)">Show 70%+</button>
-            <button class="btn" onclick="setThresholdFilter(60)">Show 60%+</button>
-            <button class="btn btn-primary" onclick="setThresholdFilter(0)">Show All Students</button>
+          <div class="drawer-header" id="clusterSideHeader" style="padding: 12px 18px; cursor: ew-resize; user-select: none; background: var(--surface-2); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between;" title="Drag left or right to move side view & adjust cluster width side-by-side">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 11px; font-weight: 700; color: #334155; background: #E2E8F0; padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px; cursor: ew-resize;" title="Drag to adjust width side-by-side with 3D cluster">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4h2v2H4V4zm6 0h2v2h-2V4zM4 7h2v2H4V7zm6 0h2v2H4v-2zm6 0h2v2h-2v-2z"/></svg> Move / Resize
+              </span>
+              <div>
+                <h2 id="sideTitle" style="font-size: 16px; margin: 0; font-weight: 800; color: var(--text-dark);">—</h2>
+                <div class="sub" id="sideSub" style="font-size: 12px; color: var(--muted); margin-top: 2px;">—</div>
+              </div>
+            </div>
+            <button class="drawer-close" id="sideClose" title="Close Panel">×</button>
+          </div>
+          <div class="student-links-bar" style="display: flex; gap: 12px; padding: 8px 20px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 11.5px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 180px; display: flex; align-items: center; gap: 6px;">
+              <span style="font-weight: 700; color: var(--text-dark);" id="sideLinkAName">Student A</span>
+              <span id="sideLinkABadges" style="display: inline-flex; gap: 4px;"></span>
+            </div>
+            <div style="flex: 1; min-width: 180px; display: flex; align-items: center; gap: 6px;">
+              <span style="font-weight: 700; color: var(--text-dark);" id="sideLinkBName">Student B</span>
+              <span id="sideLinkBBadges" style="display: inline-flex; gap: 4px;"></span>
+            </div>
+          </div>
+          <div class="drawer-nav" style="padding: 8px 20px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button id="sideMatchPrev" style="font-size: 12px; padding: 4px 8px;">◀ Prev</button>
+            <span class="nav-label" id="sideMatchLabel" style="font-size: 12px;">Match 1 / 1</span>
+            <button id="sideMatchNext" style="font-size: 12px; padding: 4px 8px;">Next ▶</button>
+            <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;" id="sideTypeToggleGroup">
+              <span style="font-size: 10.5px; font-weight: 600; color: var(--muted);">Type:</span>
+              <button class="chip side-type-chip active" data-type-view="code" style="padding: 3px 8px; font-size: 10.5px;">Code</button>
+              <button class="chip side-type-chip" data-type-view="report" style="padding: 3px 8px; font-size: 10.5px;">Report</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;" id="sideModeChipsGroup">
+              <button class="chip side-view-chip active" data-side-mode="matches" style="padding: 3px 8px; font-size: 10.5px; background: #FEF2F2; color: #DC2626; border-color: #FECACA;">Similarities</button>
+              <button class="chip side-view-chip" data-side-mode="diff" style="padding: 3px 8px; font-size: 10.5px;">Differences</button>
+              <button class="chip side-view-chip" data-side-mode="all" style="padding: 3px 8px; font-size: 10.5px;">Full File</button>
+            </div>
+            <span class="nav-label" id="sideMatchLinesSummary" style="font-size: 10.5px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-left: auto;"></span>
+          </div>
+          <div class="verdict-note" id="sideNote" style="margin: 8px 20px 0; font-size: 12px; padding: 8px 12px;"></div>
+          <div class="diff-body" style="flex: 1; overflow: hidden;">
+            <div class="diff-pane" id="sidePaneA">
+              <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;">
+                <span id="sideStudentA" style="font-weight: 700;">Student A</span>
+                <select id="sideSelectA" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; max-width: 170px; outline: none; cursor: pointer;"></select>
+              </div>
+              <pre id="sideContentA" style="font-size: 11.5px; margin: 0; padding: 10px;"></pre>
+            </div>
+            <div class="diff-pane" id="sidePaneB">
+              <div class="diff-pane-header" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;">
+                <span id="sideStudentB" style="font-weight: 700;">Student B</span>
+                <select id="sideSelectB" style="background: var(--surface); color: var(--text-dark); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-size: 10.5px; font-family: 'IBM Plex Mono', monospace; max-width: 170px; outline: none; cursor: pointer;"></select>
+              </div>
+              <pre id="sideContentB" style="font-size: 11.5px; margin: 0; padding: 10px;"></pre>
+            </div>
+          </div>
+          <div class="drawer-actions" style="padding: 10px 20px;">
+            <button class="btn btn-primary" id="sideBtnConfirm" style="font-size: 12px; padding: 6px 12px;">Confirm Plagiarism</button>
+            <button class="btn" id="sideBtnClear" style="font-size: 12px; padding: 6px 12px;">Clear / False Positive</button>
           </div>
         </div>
       </div>
@@ -607,7 +603,7 @@
   <div class="field">
     <label>CSV Export File</label>
     <div class="dropzone" id="csvDropzone"><b id="csvDzLabel">Drop a .csv export file here or click to browse</b>Supports 10 Academy export CSVs with GitHub & Google Drive links</div>
-    <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+    <input type="file" id="csvFileInput" accept=".csv,text/csv,application/vnd.ms-excel" style="display:none;">
   </div>
   
   <div class="run-status" id="csvRunStatus"></div>
@@ -748,7 +744,7 @@ let state = {
   cohortId: null, cohortLabel: null,
   batchId: null, batchLabel: null,
   batch: null, cohorts: {},
-  activeType: 'all', threshold: 70, panel: 'clusters',
+  activeType: 'all', threshold: 60, panel: 'clusters',
   userSelectedPanel: false,
   showLabels: false
 };
@@ -771,11 +767,36 @@ function setView(id){
   document.getElementById(id).classList.add('active');
 }
 
+function getCategoryBadge(label) {
+  const l = (label || '').toLowerCase();
+  if (l.includes('non-technical') || l.includes('non technical') || l.includes('linkedin')) {
+    return { name: 'Non-Technical', bg: '#FDF2F8', color: '#BE185D', border: '#FBCFE8' };
+  }
+  if (l.includes('interim') && (l.includes('report') || l.includes('doc'))) {
+    return { name: 'Interim Report', bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE' };
+  }
+  if (l.includes('final') && (l.includes('report') || l.includes('doc'))) {
+    return { name: 'Final Report', bg: '#FFFBEB', color: '#B45309', border: '#FDE68A' };
+  }
+  if (l.includes('interim') && (l.includes('github') || l.includes('repo') || l.includes('code'))) {
+    return { name: 'Interim Repo', bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' };
+  }
+  if (l.includes('final') && (l.includes('github') || l.includes('repo') || l.includes('code'))) {
+    return { name: 'Final Repo', bg: '#ECFDF5', color: '#047857', border: '#A7F3D0' };
+  }
+  return null;
+}
+
 function renderCrumbs(){
   const c = document.getElementById('crumbs');
   let html = '<span class="link" onclick="goHome()">Cohorts</span>';
   if(state.cohortLabel) html += ' / <span class="' + (state.batchLabel ? 'link" onclick="goBatches()' : 'current') + '">' + escapeHtml(state.cohortLabel) + '</span>';
-  if(state.batchLabel) html += ' / <span class="current">' + escapeHtml(state.batchLabel) + '</span>';
+  if(state.batchLabel) {
+    const badge = getCategoryBadge(state.batchLabel);
+    const displayLabel = badge ? badge.name : state.batchLabel;
+    const badgeHtml = badge ? `<span style="display:inline-block; padding: 1px 7px; font-size:11px; font-weight:600; border-radius:10px; background:${badge.bg}; color:${badge.color}; border:1px solid ${badge.border}; margin-left:6px; vertical-align:middle;">${badge.name}</span>` : '';
+    html += ' / <span class="current">' + escapeHtml(displayLabel) + (badge ? '' : '') + '</span>';
+  }
   c.innerHTML = html;
 }
 
@@ -990,7 +1011,8 @@ function _drawOrbit(){
         tick.style.height = '36px';
         tick.style.borderRadius = '4px';
         tick.style.background = color;
-        tick.title = `${b.label}: Max Similarity ${Math.round(sim)}%`;
+        const bLabelShort = getCategoryBadge(b.label)?.name || b.label;
+        tick.title = `${bLabelShort}: Max Similarity ${Math.round(sim)}%`;
         
         // Add subtle border if light colored to distinguish from white background
         if (sim < 20) {
@@ -1020,6 +1042,10 @@ function renderBatchList(){
   list.innerHTML = '';
   ids.forEach(bid => {
     const b = c.batches[bid];
+    const badge = getCategoryBadge(b.label);
+    const badgeHtml = badge
+      ? `<span style="display:inline-block; padding: 2px 8px; font-size:11px; font-weight:600; border-radius:12px; background:${badge.bg}; color:${badge.color}; border:1px solid ${badge.border}; margin-left:8px; vertical-align:middle;">${badge.name}</span>`
+      : '';
     const row = document.createElement('div');
     row.className = 'batch-row';
     row.style.display = 'flex';
@@ -1030,16 +1056,17 @@ function renderBatchList(){
     infoDiv.style.flex = '1';
     infoDiv.style.cursor = 'pointer';
 
+    const displayName = badge ? badge.name : b.label;
     if (b.studentCount === 0 && b.collectedCount > 0) {
-      infoDiv.innerHTML = `<div class="name">${escapeHtml(b.label)}</div><div class="meta">${b.collectedCount} submissions collected (Not analyzed)</div>`;
+      infoDiv.innerHTML = `<div class="name" style="display:flex; align-items:center; flex-wrap:wrap;"><span>${escapeHtml(displayName)}</span>${badgeHtml}</div><div class="meta">${b.collectedCount} submissions collected (Not analyzed)</div>`;
       infoDiv.addEventListener('click', () => {
         document.getElementById('fetchModal').classList.add('open');
         document.getElementById('uploadScrim').classList.add('open');
-        document.getElementById('fetchTitle').textContent = `Fetch & Compare: ${b.label}`;
+        document.getElementById('fetchTitle').textContent = `Fetch & Compare: ${displayName}`;
         state.batchId = bid; state.batchLabel = b.label;
       });
     } else {
-      infoDiv.innerHTML = `<div class="name">${escapeHtml(b.label)}</div><div class="meta">${b.studentCount} students compared</div>`;
+      infoDiv.innerHTML = `<div class="name" style="display:flex; align-items:center; flex-wrap:wrap;"><span>${escapeHtml(displayName)}</span>${badgeHtml}</div><div class="meta">${b.studentCount} students compared</div>`;
       infoDiv.addEventListener('click', async () => {
         state.batchId = bid; state.batchLabel = b.label;
         renderCrumbs(); setView('viewResults');
@@ -1081,9 +1108,12 @@ function setThresholdFilter(val) {
 }
 
 let _loadBatchRequestToken = 0;
+let _pairRequestToken = 0;
 
 async function loadBatch(){
   const currentToken = ++_loadBatchRequestToken;
+  _pairRequestToken++;
+  state.batch = null;
   closeSidePanel();
   
   // Show loading state
@@ -1093,6 +1123,10 @@ async function loadBatch(){
   if (panelTable) panelTable.style.display = state.panel === 'table' ? 'block' : 'none';
   const container = document.getElementById('cluster3dContainer');
   if (container) container.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;">Loading...</div>';
+  const tbody = document.getElementById('tbody');
+  if (tbody) tbody.innerHTML = '';
+  const emptyState = document.getElementById('emptyState');
+  if (emptyState) emptyState.style.display = 'none';
 
   try {
     const res = await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}`);
@@ -1121,8 +1155,7 @@ async function loadBatch(){
   const validAtCurrent = state.batch.pairs.filter(p => p.similarity >= state.threshold);
   if (validAtCurrent.length === 0 && state.batch.pairs.length > 0) {
     const maxSim = Math.max(...state.batch.pairs.map(p => p.similarity));
-    if (maxSim >= 70) state.threshold = 70;
-    else if (maxSim >= 60) state.threshold = 60;
+    if (maxSim >= 60) state.threshold = 60;
     else state.threshold = 0;
     
     const slider = document.getElementById('thresholdSlider');
@@ -1818,6 +1851,9 @@ async function renderSmallMultiples(){
 async function openSidePanel(p) {
   const panel = document.getElementById('clusterSidePanel');
   if (!panel) return;
+  const pairRequestToken = ++_pairRequestToken;
+  const requestCohortId = state.cohortId;
+  const requestBatchId = state.batchId;
 
   document.getElementById('sideTitle').textContent = p.a + '  vs.  ' + p.b;
   document.getElementById('sideSub').textContent = p.type + ' · ' + p.similarity + '% similarity' + (p.crossBatch ? ' · cross-batch' : '');
@@ -1863,6 +1899,7 @@ async function openSidePanel(p) {
     const res = await fetch(`${API}/cohorts/${state.cohortId}/batches/${state.batchId}/pairs/${p.id}/files?view=${initialView}`);
     if (!res.ok) throw new Error("Could not load files");
     const data = await res.json();
+    if (pairRequestToken !== _pairRequestToken || requestCohortId !== state.cohortId || requestBatchId !== state.batchId) return;
 
     document.getElementById('sideStudentA').textContent = data.aStudent;
     document.getElementById('sideStudentB').textContent = data.bStudent;
@@ -1934,7 +1971,9 @@ async function openSidePanel(p) {
         const normPath = f.path.replace(/\\/g, '/');
         fileOffsets[normPath] = currentOffset;
         const fileLineCount = f.content ? f.content.split('\n').length : 0;
-        currentOffset += fileLineCount + 6;
+        // Each generated file block has four header lines and one blank
+        // separator line between blocks. The content starts at offset + 4.
+        currentOffset += fileLineCount + 5;
       });
 
       return rawMatches.map(m => {
@@ -1988,16 +2027,18 @@ async function openSidePanel(p) {
       let inBlock = false;
       let blockStartLine = 0;
 
+      const lineComparison = compareFileLines(lines, otherLines);
+
       renderLines.forEach((lineText, idx) => {
         const lineNum = idx + 1;
         const isMatched = matchedLines.has(lineNum);
-        const isDifferent = !isMatched;
+        const isAdded = lineComparison.additions.has(lineNum);
 
         if (mode === 'matches' && !isMatched) {
           inBlock = false;
           return;
         }
-        if (mode === 'diff' && !isDifferent) {
+        if (mode === 'diff' && !lineComparison.uncopied.has(lineNum)) {
           inBlock = false;
           return;
         }
@@ -2052,8 +2093,10 @@ async function openSidePanel(p) {
         });
       }
 
-      document.getElementById('sideContentA').textContent = formatSideContent(contentA, contentB, matchesA, 'A', 'aStartLine', 'aEndLine', currentSideFilterMode);
-      document.getElementById('sideContentB').textContent = formatSideContent(contentB, contentA, matchesB, 'B', 'bStartLine', 'bEndLine', currentSideFilterMode);
+      const activeMatchA = m && matchesA.find(candidate => candidate._original === m || candidate === m);
+      const activeMatchB = m && matchesB.find(candidate => candidate._original === m || candidate === m);
+      renderDiffPane('A', contentA, contentB, matchesA, 'aStartLine', 'aEndLine', activeMatchA, document.getElementById('sideContentA'), currentSideFilterMode);
+      renderDiffPane('B', contentB, contentA, matchesB, 'bStartLine', 'bEndLine', activeMatchB, document.getElementById('sideContentB'), currentSideFilterMode);
 
       if (sideMatches.length > 0 && m) {
         document.getElementById('sideMatchLabel').textContent = `Match ${sideMatchIdx + 1} / ${sideMatches.length}`;
@@ -2213,7 +2256,7 @@ function renderTable(){
       statusSel.addEventListener('change', (e) => setStatus(p.id, e.target.value));
     }
 
-    tr.addEventListener('click', () => openDrawer(p));
+    tr.addEventListener('click', () => openSidePanel(p));
     fragment.appendChild(tr);
   });
   tbody.appendChild(fragment);
@@ -2439,8 +2482,8 @@ function renderLinkBadges(githubUrl, docUrl, pairType) {
 
 
 
-function renderDiffPane(side, content, otherContent, matches, startKey, endKey, activeMatch) {
-  const container = document.getElementById(`diffContent${side}`);
+function renderDiffPane(side, content, otherContent, matches, startKey, endKey, activeMatch, overrideContainer = null, filterMode = null) {
+  const container = overrideContainer || document.getElementById(`sideContent${side}`) || document.getElementById(`diffContent${side}`);
   const minimap = document.getElementById(`minimap${side}`);
   if (!container) return;
 
@@ -2455,7 +2498,7 @@ function renderDiffPane(side, content, otherContent, matches, startKey, endKey, 
   const lines = content.split('\n');
   const otherLines = otherContent ? otherContent.split('\n') : null;
   const totalLines = lines.length;
-  const mode = window._currentDiffFilterMode || 'all';
+  const mode = filterMode || window._currentDiffFilterMode || 'all';
 
   const matchedLines = new Set();
   (matches || []).forEach(m => {
@@ -2468,28 +2511,41 @@ function renderDiffPane(side, content, otherContent, matches, startKey, endKey, 
     }
   });
 
+  const lineComparison = compareFileLines(lines, otherLines);
+
   const activeStart = activeMatch ? (activeMatch[startKey] || activeMatch[`${side.toLowerCase()}Lines`]) : null;
-  const activeLen = activeMatch ? (activeMatch.length || 1) : 0;
-  const activeEnd = activeStart ? (activeStart + activeLen - 1) : null;
+  const activeEnd = activeMatch && activeStart
+    ? (activeMatch[endKey] || (activeStart + (activeMatch.length || 1) - 1))
+    : null;
 
   const frag = document.createDocumentFragment();
 
   lines.forEach((lineText, idx) => {
     const lineNum = idx + 1;
+    const trimmed = lineText.trim();
     const isMatched = matchedLines.has(lineNum);
-    const isDifferent = !isMatched;
+    const isUncopied = lineComparison.uncopied.has(lineNum);
+    const isAdded = lineComparison.additions.has(lineNum);
 
     if (mode === 'matches' && !isMatched) return;
-    if (mode === 'diff' && !isDifferent) return;
+    if (mode === 'diff' && !isUncopied) return;
 
     const lineEl = document.createElement('span');
     lineEl.className = 'line';
     lineEl.id = `${side.toLowerCase()}-line-${lineNum}`;
 
-    if (activeStart && lineNum >= activeStart && lineNum <= activeEnd) {
-      lineEl.classList.add('match-active');
-    } else if (isMatched) {
-      lineEl.classList.add('match-other');
+    // The full-file view is the only view that carries semantic colors:
+    // copied lines red, inserted lines green, and all other lines unstyled.
+    if (mode === 'all') {
+      if (activeStart && lineNum >= activeStart && lineNum <= activeEnd) {
+        lineEl.classList.add('match-active');
+      } else if (isMatched) {
+        lineEl.classList.add('match-other');
+      } else if (isAdded) {
+        lineEl.classList.add('line-added');
+      } else {
+        lineEl.classList.add('line-uncopied');
+      }
     }
 
     lineEl.textContent = lineText;
@@ -2513,6 +2569,53 @@ function renderDiffPane(side, content, otherContent, matches, startKey, endKey, 
     });
     minimap.appendChild(mmFrag);
   }
+}
+
+function compareFileLines(lines, otherLines) {
+  const uncopied = new Set();
+  if (!otherLines) {
+    lines.forEach((line, index) => {
+      if (line.trim()) uncopied.add(index + 1);
+    });
+    return { uncopied, additions: new Set() };
+  }
+
+  // Compare the meaningful line content without requiring the same order.
+  // A longest-common-subsequence comparison incorrectly reported moved but
+  // unchanged lines as differences.
+  const otherLineCounts = new Map();
+  otherLines.forEach(line => {
+    const normalized = line.trim();
+    if (normalized) {
+      otherLineCounts.set(normalized, (otherLineCounts.get(normalized) || 0) + 1);
+    }
+  });
+  const matched = new Set();
+  lines.forEach((line, index) => {
+    const normalized = line.trim();
+    const remaining = otherLineCounts.get(normalized) || 0;
+    if (normalized && remaining > 0) {
+      matched.add(index + 1);
+      otherLineCounts.set(normalized, remaining - 1);
+    }
+  });
+
+  lines.forEach((_, index) => {
+    // Empty lines are layout, not a substantive difference. Leaving them
+    // unclassified prevents the Differences view from reporting every
+    // formatting-only blank line as a change.
+    if (!matched.has(index + 1) && lines[index].trim()) {
+      uncopied.add(index + 1);
+    }
+  });
+
+  const additions = new Set();
+  uncopied.forEach(lineNumber => {
+    const hasMatchBefore = [...matched].some(matchLine => matchLine < lineNumber);
+    const hasMatchAfter = [...matched].some(matchLine => matchLine > lineNumber);
+    if (hasMatchBefore && hasMatchAfter) additions.add(lineNumber);
+  });
+  return { uncopied, additions };
 }
 
 
@@ -2588,8 +2691,23 @@ const csvFileInput = document.getElementById('csvFileInput');
 csvDz.addEventListener('click', () => csvFileInput.click());
 csvDz.addEventListener('dragover', e => { e.preventDefault(); csvDz.classList.add('hover'); });
 csvDz.addEventListener('dragleave', () => csvDz.classList.remove('hover'));
-csvDz.addEventListener('drop', e => { e.preventDefault(); csvDz.classList.remove('hover'); pickedCsvFile = e.dataTransfer.files[0]; updateCsvDzLabel(); });
-csvFileInput.addEventListener('change', () => { pickedCsvFile = csvFileInput.files[0]; updateCsvDzLabel(); });
+function setCsvFile(file) {
+  if (!file) return;
+  if (!/\.csv$/i.test(file.name)) {
+    pickedCsvFile = null;
+    statusCsvSelection('Please choose a file with a .csv extension.');
+    updateCsvDzLabel();
+    return;
+  }
+  pickedCsvFile = file;
+  statusCsvSelection('');
+  updateCsvDzLabel();
+}
+function statusCsvSelection(message) {
+  document.getElementById('csvRunStatus').textContent = message;
+}
+csvDz.addEventListener('drop', e => { e.preventDefault(); csvDz.classList.remove('hover'); setCsvFile(e.dataTransfer.files[0]); });
+csvFileInput.addEventListener('change', () => { setCsvFile(csvFileInput.files[0]); });
 function updateCsvDzLabel(){ document.getElementById('csvDzLabel').textContent = pickedCsvFile ? pickedCsvFile.name : 'Drop a .csv export file here or click to browse'; }
 
 document.getElementById('submitCsvUpload').addEventListener('click', async () => {
@@ -2627,13 +2745,20 @@ document.getElementById('submitCsvUpload').addEventListener('click', async () =>
     const processed = data.processedBatches || [];
     const catCount = data.categoryCount || processed.length || 1;
     let summaryParts = [];
+    let processingErrors = [];
     processed.forEach(r => {
       const bName = r.batchLabel || r.batchId;
       if (r.code) summaryParts.push(`${bName} (Code: ${r.code.pairCount} pairs)`);
       if (r.report) summaryParts.push(`${bName} (Report: ${r.report.pairCount} pairs)`);
+      if (r.code_error) processingErrors.push(`${bName} Code: ${r.code_error}`);
+      if (r.report_error) processingErrors.push(`${bName} Report: ${r.report_error}`);
     });
 
-    status.innerHTML = `<span style="color:#059669; font-weight:600;">✓ Analysis complete! Processed ${catCount} separate category batch(es)! (${summaryParts.join(' | ')}) — Loading dashboard...</span>`;
+    if (processingErrors.length > 0) {
+      status.innerHTML = `<span style="color:#b45309; font-weight:600;">⚠ Processed ${catCount} category batch(es), but some comparisons were not created: ${processingErrors.join(' | ')}</span>`;
+    } else {
+      status.innerHTML = `<span style="color:#059669; font-weight:600;">✓ Analysis complete! Processed ${catCount} separate category batch(es)! (${summaryParts.join(' | ')}) — Loading dashboard...</span>`;
+    }
     
     setTimeout(async () => {
       closeUpload();
@@ -2646,6 +2771,7 @@ document.getElementById('submitCsvUpload').addEventListener('click', async () =>
       }
       renderCrumbs();
       setView('viewBatches');
+      renderBatchList();
       document.getElementById('submitCsvUpload').disabled = false;
     }, 1500);
   } catch (e) {

@@ -30,7 +30,8 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
         "-l", language,
         "--mode", "RUN",
         "-r", str(result_base),
-        "-m", "0.0",   # include ALL pairs regardless of similarity score (supported in all JPlag versions)
+        "-m", "0.0",   # include ALL pairs regardless of similarity score
+        "-n", "100000",  # output up to 100k comparisons (covers all possible pairs for ~450 students)
     ]
 
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
@@ -226,7 +227,7 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
         first = _get_sub_id(entry.get("firstSubmission") or entry.get("first_submission") or entry.get("firstSubmissionId") or entry.get("submission1") or entry.get("id1"))
         second = _get_sub_id(entry.get("secondSubmission") or entry.get("second_submission") or entry.get("secondSubmissionId") or entry.get("submission2") or entry.get("id2"))
 
-        matches = entry.get("matches") or _load_matches(extract_dir, first, second)
+        matches = _normalize_matches(entry.get("matches")) if entry.get("matches") else _load_matches(extract_dir, first, second)
 
         if first and second:
             comparisons.append({
@@ -235,6 +236,14 @@ def run_jplag(jar_path: Path, submissions_dir: Path, language: str, output_dir: 
                 "similarity": round(avg * 100, 1) if avg <= 1.0 else round(avg, 1),
                 "matches": matches,
             })
+
+    # JPlag can omit pairs which have no token overlap (and some versions also
+    # cap the number of rows in topComparisons.json). Keep the API complete by
+    # explicitly representing every missing pair as a zero-similarity pair.
+    comparisons = _complete_comparisons(
+        comparisons,
+        [p.name for p in submissions_dir.iterdir() if p.is_dir()],
+    )
 
     analyzed_students = set()
     sub_file_index = extract_dir / "submissionFileIndex.json"
@@ -318,6 +327,7 @@ def run_jplag_grouped(jar_path: Path, submissions_dir: Path, output_dir: Path, m
 
     all_comparisons = []
     analyzed_set = set()
+    successful_students = set()
 
     for lang, folders in lang_groups.items():
         if len(folders) < 2:
@@ -339,11 +349,21 @@ def run_jplag_grouped(jar_path: Path, submissions_dir: Path, output_dir: Path, m
             res = run_jplag(jar_path, group_sub_dir, lang, group_out_dir)
             all_comparisons.extend(res.get("comparisons", []))
             analyzed_set.update(res.get("analyzedStudents", []))
+            successful_students.update(sf.name for sf in folders)
             for sk in res.get("skippedStudents", []):
                 skipped_records.append(sk)
         except Exception as e:
             for sf in folders:
                 skipped_records.append({"name": sf.name, "reason": f"JPlag failed for {lang}: {str(e)}"})
+
+    # A code run is grouped by language because JPlag cannot tokenize different
+    # languages together. Still return a deterministic row for every possible
+    # student pair so the dashboard accurately reports coverage; cross-language
+    # rows are zero-similarity and have no matched fragments.
+    all_comparisons = _complete_comparisons(
+        all_comparisons,
+        sorted(successful_students),
+    )
 
     return {
         "comparisons": all_comparisons,
@@ -384,28 +404,82 @@ def _load_matches(extract_dir: Path, a: str, b: str) -> list:
             with open(found_path, encoding="utf-8", errors="replace") as f:
                 data = json.load(f)
             matches = data.get("matches", [])
-            result = []
-            for m in matches:
-                a_start = m.get("startInFirst", {}).get("line") or m.get("firstLine")
-                b_start = m.get("startInSecond", {}).get("line") or m.get("secondLine")
-                a_length = m.get("lengthOfFirst", 0) or m.get("length", 0)
-                b_length = m.get("lengthOfSecond", a_length) or a_length
-                a_file = m.get("fileInFirst") or m.get("firstFileName") or m.get("firstFile")
-                b_file = m.get("fileInSecond") or m.get("secondFileName") or m.get("secondFile")
-                result.append({
-                    "aFile": a_file,
-                    "bFile": b_file,
-                    "aStartLine": a_start,
-                    "aEndLine": (a_start + a_length - 1) if a_start and a_length else a_start,
-                    "bStartLine": b_start,
-                    "bEndLine": (b_start + b_length - 1) if b_start and b_length else b_start,
-                    "aLines": a_start,
-                    "bLines": b_start,
-                    "length": a_length,
-                })
-            return result
+            return _normalize_matches(matches)
         except Exception:
             return []
 
     return []
 
+
+def _normalize_matches(matches: list) -> list:
+    """Convert JPlag match records to one consistent, line-based shape."""
+    result = []
+    for m in matches or []:
+        if not isinstance(m, dict):
+            continue
+        first_start = m.get("startInFirst") or {}
+        second_start = m.get("startInSecond") or {}
+        first_end = m.get("endInFirst") or {}
+        second_end = m.get("endInSecond") or {}
+        a_start = first_start.get("line") or m.get("firstLine")
+        b_start = second_start.get("line") or m.get("secondLine")
+        a_length = m.get("lengthOfFirst", 0) or m.get("length", 0)
+        b_length = m.get("lengthOfSecond", a_length) or a_length
+        a_end = first_end.get("line") or m.get("firstEndLine")
+        b_end = second_end.get("line") or m.get("secondEndLine")
+        if not a_end and a_start and a_length:
+            a_end = a_start + a_length - 1
+        if not b_end and b_start and b_length:
+            b_end = b_start + b_length - 1
+        result.append({
+            "aFile": m.get("fileInFirst") or m.get("firstFileName") or m.get("firstFile"),
+            "bFile": m.get("fileInSecond") or m.get("secondFileName") or m.get("secondFile"),
+            "aStartLine": a_start,
+            "aEndLine": a_end,
+            "bStartLine": b_start,
+            "bEndLine": b_end,
+            "aLines": a_start,
+            "bLines": b_start,
+            "length": max(
+                (a_end - a_start + 1) if a_start and a_end else 0,
+                (b_end - b_start + 1) if b_start and b_end else 0,
+            ),
+        })
+    return result
+
+
+def _complete_comparisons(comparisons: list, student_names: list) -> list:
+    """Add explicit zero-similarity rows for every absent unordered pair."""
+    existing = {}
+    for comparison in comparisons:
+        a = str(comparison.get("a", ""))
+        b = str(comparison.get("b", ""))
+        if not a or not b or a == b:
+            continue
+        existing[frozenset((a, b))] = comparison
+
+    completed = []
+    emitted = set()
+    for comparison in comparisons:
+        a = comparison.get("a")
+        b = comparison.get("b")
+        key = frozenset((str(a), str(b))) if a and b else None
+        if key and a != b and key not in emitted:
+            completed.append(comparison)
+            emitted.add(key)
+
+    names = sorted({str(name) for name in student_names if str(name)})
+    for index, first in enumerate(names):
+        for second in names[index + 1:]:
+            key = frozenset((first, second))
+            if key not in emitted:
+                completed.append({
+                    "a": first,
+                    "b": second,
+                    "similarity": 0.0,
+                    "matches": [],
+                    "synthetic": True,
+                })
+                emitted.add(key)
+
+    return completed

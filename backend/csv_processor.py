@@ -25,7 +25,15 @@ def normalize_student_name(name: str) -> str:
 
 
 def extract_drive_id(url: str) -> str:
-    match = re.search(r'/(?:document/d/|file/d/|id=)([a-zA-Z0-9-_]+)', url)
+    if not url:
+        return None
+    match = re.search(r'/(?:document|file|presentation|spreadsheets)/d/([a-zA-Z0-9-_]+)', url)
+    if not match:
+        match = re.search(r'/folders/([a-zA-Z0-9-_]+)', url)
+    if not match:
+        match = re.search(r'[?&]id=([a-zA-Z0-9-_]+)', url)
+    if not match:
+        match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
     return match.group(1) if match else None
 
 
@@ -36,25 +44,68 @@ def download_google_doc_or_drive(url: str, student_dir: Path, student_name: str)
 
     student_dir.mkdir(parents=True, exist_ok=True)
 
-    export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=docx"
-    try:
-        resp = requests.get(export_url, timeout=12)
-        if resp.status_code == 200 and "text/html" not in resp.headers.get("Content-Type", ""):
-            dest = student_dir / f"report_{student_name}.docx"
-            dest.write_bytes(resp.content)
-            return True
-    except Exception:
-        pass
+    # 1. Try Google Doc / Presentation / Spreadsheet TXT export
+    txt_export_urls = [
+        f"https://docs.google.com/document/d/{doc_id}/export?format=txt",
+        f"https://docs.google.com/presentation/d/{doc_id}/export/txt",
+        f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv",
+    ]
+    for exp_url in txt_export_urls:
+        try:
+            resp = requests.get(exp_url, timeout=12)
+            if resp.status_code == 200 and "text/html" not in resp.headers.get("Content-Type", ""):
+                text_content = resp.text.strip()
+                if text_content and not text_content.startswith("<!DOCTYPE") and not text_content.startswith("<html"):
+                    dest = student_dir / f"report_{student_name}.txt"
+                    dest.write_text(text_content, encoding="utf-8", errors="replace")
+                    return True
+        except Exception:
+            pass
 
-    drive_url = f"https://drive.google.com/uc?export=download&id={doc_id}"
-    try:
-        resp = requests.get(drive_url, timeout=12)
-        if resp.status_code == 200 and "text/html" not in resp.headers.get("Content-Type", ""):
-            dest = student_dir / f"report_{student_name}.txt"
-            dest.write_bytes(resp.content)
-            return True
-    except Exception:
-        pass
+    # 2. Try Google Doc / Presentation / Spreadsheet DOCX / PDF export
+    doc_export_urls = [
+        (f"https://docs.google.com/document/d/{doc_id}/export?format=docx", ".docx"),
+        (f"https://docs.google.com/presentation/d/{doc_id}/export/pdf", ".pdf"),
+        (f"https://docs.google.com/document/d/{doc_id}/export?format=pdf", ".pdf"),
+        (f"https://docs.google.com/spreadsheets/d/{doc_id}/export?format=pdf", ".pdf"),
+    ]
+    for exp_url, ext in doc_export_urls:
+        try:
+            resp = requests.get(exp_url, timeout=12)
+            if resp.status_code == 200 and "text/html" not in resp.headers.get("Content-Type", ""):
+                if resp.content:
+                    dest = student_dir / f"report_{student_name}{ext}"
+                    dest.write_bytes(resp.content)
+                    return True
+        except Exception:
+            pass
+
+    # 3. Try Direct Google Drive File Download
+    drive_urls = [
+        f"https://drive.google.com/uc?export=download&id={doc_id}&confirm=t",
+        f"https://docs.google.com/uc?export=download&id={doc_id}&confirm=t",
+    ]
+    for drive_url in drive_urls:
+        try:
+            resp = requests.get(drive_url, timeout=12)
+            if resp.status_code == 200:
+                content = resp.content
+                if content.startswith(b"%PDF"):
+                    dest = student_dir / f"report_{student_name}.pdf"
+                    dest.write_bytes(content)
+                    return True
+                elif content.startswith(b"PK\x03\x04"):
+                    dest = student_dir / f"report_{student_name}.docx"
+                    dest.write_bytes(content)
+                    return True
+                elif "text/html" not in resp.headers.get("Content-Type", ""):
+                    text_content = resp.text.strip()
+                    if text_content and not text_content.startswith("<!DOCTYPE") and not text_content.startswith("<html"):
+                        dest = student_dir / f"report_{student_name}.txt"
+                        dest.write_text(text_content, encoding="utf-8", errors="replace")
+                        return True
+        except Exception:
+            pass
 
     return False
 
@@ -243,7 +294,10 @@ def parse_csv_submissions(csv_content: str) -> dict:
                 if student_folder_name not in cat_report_tasks:
                     cat_report_tasks[student_folder_name] = rep
 
-        clean_cat_id = re.sub(r'[^a-zA-Z0-9_]', '_', cat_name.lower()).strip('_')[:32]
+        import hashlib
+        slug = re.sub(r'[^a-zA-Z0-9_]+', '_', cat_name.lower()).strip('_')
+        cat_hash = hashlib.md5(cat_name.encode('utf-8')).hexdigest()[:6]
+        clean_cat_id = f"{slug[:25]}_{slug[-15:]}_{cat_hash}" if len(slug) > 45 else slug
         if not clean_cat_id:
             clean_cat_id = "csv_batch"
 
